@@ -587,7 +587,7 @@ CClink = $(CC)
 # When using -g with some older versions of Linux you might get a
 # statically linked executable.
 # When not defined, configure will try to use -O2 for gcc and -O for others.
-#CFLAGS = -g
+CFLAGS = -g
 #CFLAGS = -O
 
 # Optimization limits - depends on the compiler.  Automatic check in configure
@@ -664,6 +664,7 @@ LINT_OPTIONS = -beprxzF
 # of GCC.  That's probably a bug in the "-pg" implementation.
 #PROFILE_LIBS = -pg -lc
 
+WAYLAND_LIBS = -lwayland-client
 
 # TEST COVERAGE - Uncomment the two lines below the explanation to get code
 # coverage information. (provided by Yegappan Lakshmanan)
@@ -696,9 +697,9 @@ LINT_OPTIONS = -beprxzF
 # $ export ASAN_OPTIONS="print_stacktrace=1 log_path=asan"
 # $ export LSAN_OPTIONS="suppressions=`pwd`/testdir/lsan-suppress.txt"
 # When running tests output can be found in testdir/asan.*
-#SANITIZER_CFLAGS = -g -O0 -fsanitize-recover=all \
-#		   -fsanitize=address -fsanitize=undefined \
-#		   -fno-omit-frame-pointer
+SANITIZER_CFLAGS = -g -O0 -fsanitize-recover=all \
+		   -fsanitize=address -fsanitize=undefined \
+		   -fno-omit-frame-pointer
 
 # Similarly when compiling with clang and using ubsan.
 # $ export UBSAN_OPTIONS="print_stacktrace=1 log_path=ubsan"
@@ -1105,7 +1106,7 @@ INSTALL_DATA_R	= cp -r
 
 ### Program to run on installed binary.  Use the second one to disable strip.
 #STRIP = strip
-#STRIP = /bin/true
+STRIP = /bin/true
 
 ### Permissions for binaries  {{{1
 BINMOD = 755
@@ -1416,7 +1417,8 @@ ALL_LIBS = \
 	   $(RUBY_LIBS) \
 	   $(PROFILE_LIBS) \
 	   $(SANITIZER_LIBS) \
-	   $(LEAK_LIBS)
+	   $(LEAK_LIBS) \
+	   $(WAYLAND_LIBS);
 
 # abbreviations
 DEST_BIN = $(DESTDIR)$(BINDIR)
@@ -1600,6 +1602,8 @@ BASIC_SRC = \
 	vim9type.c \
 	viminfo.c \
 	window.c \
+	wayland.c \
+	wlr-data-control-unstable-v1.c \
 	bufwrite.c \
 	$(OS_EXTRA_SRC)
 
@@ -1760,6 +1764,8 @@ OBJ_COMMON = \
 	objects/vim9type.o \
 	objects/viminfo.o \
 	objects/window.o \
+	objects/wayland.o \
+	objects/wlr-data-control-unstable-v1.o \
 	objects/bufwrite.o \
 	$(GUI_OBJ) \
 	$(TERM_OBJ) \
@@ -1953,6 +1959,7 @@ PRO_AUTO = \
 	vim9type.pro \
 	viminfo.pro \
 	window.pro \
+	wayland.pro \
 	$(ALL_GUI_PRO) \
 	$(TCL_PRO)
 
@@ -1960,9 +1967,21 @@ PRO_MANUAL = os_amiga.pro os_win32.pro \
 	os_mswin.pro winclip.pro os_vms.pro $(PERL_PRO)
 
 # Default target is making the executable and tools
-all: $(VIMTARGET) $(TOOLS) languages $(GUI_BUNDLE)
+all: gen-protocols $(VIMTARGET) $(TOOLS) languages $(GUI_BUNDLE)
 
 tools: $(TOOLS)
+
+gen-protocols: protocols/wlr-data-control-unstable-v1.xml
+
+protocols/wlr-data-control-unstable-v1.xml: wlr-data-control-unstable-v1.c wlr-data-control-unstable-v1.h
+
+wlr-data-control-unstable-v1.h:
+	 wayland-scanner client-header protocols/wlr-data-control-unstable-v1.xml wlr-data-control-unstable-v1.h
+
+wlr-data-control-unstable-v1.c:
+	 wayland-scanner private-code protocols/wlr-data-control-unstable-v1.xml wlr-data-control-unstable-v1.c
+
+
 
 # Run configure with all the setting from above.
 #
@@ -3615,6 +3634,12 @@ objects/viminfo.o: viminfo.c
 
 objects/window.o: window.c
 	$(CCC) -o $@ window.c
+
+objects/wayland.o: wayland.c
+	$(CCC) -o $@ wayland.c
+
+objects/wlr-data-control-unstable-v1.o: wlr-data-control-unstable-v1.c
+	$(CCC) -o $@ wlr-data-control-unstable-v1.c
 
 objects/netbeans.o: netbeans.c
 	$(CCC) -o $@ netbeans.c

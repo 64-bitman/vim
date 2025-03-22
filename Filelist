@@ -177,6 +177,8 @@ SRC_ALL =	\
 		src/viminfo.c \
 		src/winclip.c \
 		src/window.c \
+		src/wayland.c \
+		src/wlr-data-control-unstable-v1.c \
 		src/xxd/xxd.c \
 		src/testdir/gen_opt_test.vim \
 		src/testdir/README.txt \
@@ -356,6 +358,7 @@ SRC_ALL =	\
 		src/proto/viminfo.pro \
 		src/proto/winclip.pro \
 		src/proto/window.pro \
+		src/proto/wayland.pro \
 		src/libvterm/.bzrignore \
 		src/libvterm/.gitignore \
 		src/libvterm/LICENSE \

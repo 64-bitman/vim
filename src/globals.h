@@ -956,9 +956,9 @@ EXTERN int	gui_win_y INIT(= -1);
 #endif
 
 #ifdef FEAT_CLIPBOARD
-EXTERN Clipboard_T clip_star;	// PRIMARY selection in X11
-# ifdef FEAT_X11
-EXTERN Clipboard_T clip_plus;	// CLIPBOARD selection in X11
+EXTERN Clipboard_T clip_star;	// PRIMARY selection in X11 and WAYLAND
+# ifdef FEAT_X11 // TODO add wayland feature flag
+EXTERN Clipboard_T clip_plus;	// CLIPBOARD selection in X11 and WAYLAND
 # else
 #  define clip_plus clip_star	// there is only one clipboard
 #  define ONE_CLIPBOARD
