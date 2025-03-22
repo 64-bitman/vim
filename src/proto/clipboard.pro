@@ -35,4 +35,5 @@ int clip_convert_selection(char_u **str, long_u *len, Clipboard_T *cbd);
 int may_get_selection(int regname);
 void may_set_selection(void);
 void adjust_clip_reg(int *rp);
+void clip_wl_request_selection(Clipboard_T *cbd);
 /* vim: set ft=c : */

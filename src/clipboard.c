@@ -12,6 +12,7 @@
  */
 
 #include "vim.h"
+#include <poll.h>
 
 #ifdef FEAT_CYGWIN_WIN32_CLIPBOARD
 # define WIN32_LEAN_AND_MEAN
@@ -1178,6 +1179,7 @@ clip_copy_modeless_selection(int both UNUSED)
 	clip_gen_set_selection(&clip_plus);
     }
 #endif
+
     vim_free(buffer);
 }
 
@@ -1207,6 +1209,36 @@ clip_gen_set_selection(Clipboard_T *cbd)
 #endif
 }
 
+/* static void recv(int fd, enum vwl_sel_type_T cb_type) */
+/* { */
+/* #define MB 1000000 */
+    /* char *buf = alloc(10 * MB + 1); */
+    /* char *start = buf; */
+    /* ssize_t r = 0; */
+    /* size_t total = 0; */
+
+    /* vim_memset(buf, 0, 10 * MB + 1); */
+
+    /* struct pollfd pfd = { */
+	/* .fd = fd, */
+	/* .events = POLLIN */
+    /* }; */
+
+    /* while (poll(&pfd, 1, 2) > 0) */
+    /* { */
+	/* if ((r = read(fd, start, (10 * MB) - 1 - total)) > 0) */
+	/* { */
+	    /* start = buf + r; */
+	    /* total += (size_t)r; */
+	/* } */
+    /* } */
+
+    /* ch_log(NULL, "read : %ld %ld", total, strlen(buf)); */
+    /* str_to_reg(get_y_register(PLUS_REGISTER), MAUTO, (char_u *)buf, strlen(buf), -1, FALSE); */
+    /* vim_free(buf); */
+
+/* } */
+
     static void
 clip_gen_request_selection(Clipboard_T *cbd)
 {
@@ -1216,7 +1248,8 @@ clip_gen_request_selection(Clipboard_T *cbd)
 	clip_mch_request_selection(cbd);
     else
 # endif
-	clip_xterm_request_selection(cbd);
+	/* clip_xterm_request_selection(cbd); */
+	clip_wl_request_selection(cbd);
 #else
     clip_mch_request_selection(cbd);
 #endif
@@ -2226,6 +2259,256 @@ adjust_clip_reg(int *rp)
 	msg_warn_missing_clipboard();
 	*rp = 0;
     }
+}
+
+/*
+    static void
+clip_x11_request_selection_cb(
+    Widget	w UNUSED,
+    XtPointer	success,
+    Atom	*sel_atom,
+    Atom	*type,
+    XtPointer	value,
+    long_u	*length,
+    int		*format)
+{
+    int		motion_type = MAUTO;
+    long_u	len;
+    char_u	*p;
+    char	**text_list = NULL;
+    Clipboard_T	*cbd;
+    char_u	*tmpbuf = NULL;
+
+    if (*sel_atom == clip_plus.sel_atom)
+	cbd = &clip_plus;
+    else
+	cbd = &clip_star;
+
+    if (value == NULL || *length == 0)
+    {
+	clip_free_selection(cbd);	// nothing received, clear register
+	*(int *)success = FALSE;
+	return;
+    }
+    p = (char_u *)value;
+    len = *length;
+    if (*type == vim_atom)
+    {
+	motion_type = *p++;
+	len--;
+    }
+
+    else if (*type == vimenc_atom)
+    {
+	char_u		*enc;
+	vimconv_T	conv;
+	int		convlen;
+
+	motion_type = *p++;
+	--len;
+
+	enc = p;
+	p += STRLEN(p) + 1;
+	len -= p - enc;
+
+	// If the encoding of the text is different from 'encoding', attempt
+	// converting it.
+	conv.vc_type = CONV_NONE;
+	convert_setup(&conv, enc, p_enc);
+	if (conv.vc_type != CONV_NONE)
+	{
+	    convlen = len;	// Need to use an int here.
+	    tmpbuf = string_convert(&conv, p, &convlen);
+	    len = convlen;
+	    if (tmpbuf != NULL)
+		p = tmpbuf;
+	    convert_setup(&conv, NULL, NULL);
+	}
+    }
+
+    else if (*type == compound_text_atom
+	    || *type == utf8_atom
+	    || (enc_dbcs != 0 && *type == text_atom))
+    {
+	XTextProperty	text_prop;
+	int		n_text = 0;
+	int		status;
+
+	text_prop.value = (unsigned char *)value;
+	text_prop.encoding = *type;
+	text_prop.format = *format;
+	text_prop.nitems = len;
+#if defined(X_HAVE_UTF8_STRING)
+	if (*type == utf8_atom)
+	    status = Xutf8TextPropertyToTextList(X_DISPLAY, &text_prop,
+							 &text_list, &n_text);
+	else
+#endif
+	    status = XmbTextPropertyToTextList(X_DISPLAY, &text_prop,
+							 &text_list, &n_text);
+	if (status != Success || n_text < 1)
+	{
+	    *(int *)success = FALSE;
+	    return;
+	}
+	p = (char_u *)text_list[0];
+	len = STRLEN(p);
+    }
+    clip_yank_selection(motion_type, p, (long)len, cbd);
+
+    if (text_list != NULL)
+	XFreeStringList(text_list);
+    vim_free(tmpbuf);
+    XtFree((char *)value);
+    *(int *)success = TRUE;
+}
+
+    void
+clip_x11_request_selection(
+    Widget	myShell,
+    Display	*dpy,
+    Clipboard_T	*cbd)
+{
+    XEvent	event;
+    Atom	type;
+    static int	success;
+    int		i;
+    time_t	start_time;
+    int		timed_out = FALSE;
+
+    for (i = 0; i < 6; i++)
+    {
+	switch (i)
+	{
+	    case 0:  type = vimenc_atom;	break;
+	    case 1:  type = vim_atom;		break;
+	    case 2:  type = utf8_atom;		break;
+	    case 3:  type = compound_text_atom; break;
+	    case 4:  type = text_atom;		break;
+	    default: type = XA_STRING;
+	}
+	if (type == utf8_atom
+# if defined(X_HAVE_UTF8_STRING)
+		&& !enc_utf8
+# endif
+		)
+	    // Only request utf-8 when 'encoding' is utf8 and
+	    // Xutf8TextPropertyToTextList is available.
+	    continue;
+	success = MAYBE;
+	XtGetSelectionValue(myShell, cbd->sel_atom, type,
+	    clip_x11_request_selection_cb, (XtPointer)&success, CurrentTime);
+
+	// Make sure the request for the selection goes out before waiting for
+	// a response.
+	XFlush(dpy);
+
+
+	 * Wait for result of selection request, otherwise if we type more
+	 * characters, then they will appear before the one that requested the
+	 * paste!  Don't worry, we will catch up with any other events later.
+
+	start_time = time(NULL);
+	while (success == MAYBE)
+	{
+	    if (XCheckTypedEvent(dpy, PropertyNotify, &event)
+		    || XCheckTypedEvent(dpy, SelectionNotify, &event)
+		    || XCheckTypedEvent(dpy, SelectionRequest, &event))
+	    {
+		// This is where clip_x11_request_selection_cb() should be
+		// called.  It may actually happen a bit later, so we loop
+		// until "success" changes.
+		// We may get a SelectionRequest here and if we don't handle
+		// it we hang.  KDE klipper does this, for example.
+		// We need to handle a PropertyNotify for large selections.
+		XtDispatchEvent(&event);
+		continue;
+	    }
+
+	    // Time out after 2 to 3 seconds to avoid that we hang when the
+	    // other process doesn't respond.  Note that the SelectionNotify
+	    // event may still come later when the selection owner comes back
+	    // to life and the text gets inserted unexpectedly.  Don't know
+	    // why that happens or how to avoid that :-(.
+	    if (time(NULL) > start_time + 2)
+	    {
+		timed_out = TRUE;
+		break;
+	    }
+
+	    // Do we need this?  Probably not.
+	    XSync(dpy, False);
+
+	    // Wait for 1 msec to avoid that we eat up all CPU time.
+	    ui_delay(1L, TRUE);
+	}
+
+	if (success == TRUE)
+	    return;
+
+	// don't do a retry with another type after timing out, otherwise we
+	// hang for 15 seconds.
+	if (timed_out)
+	    break;
+    }
+
+    // Final fallback position - use the X CUT_BUFFER0 store
+    yank_cut_buffer0(dpy, cbd);
+}
+*/
+
+    static void
+clip_wl_request_selection_cb(int fd, enum vwl_sel_type_T sel_type,
+	const char *mime_type)
+{
+    int		motion_type = MAUTO;
+    Clipboard_T	*cbd;
+
+    if (sel_type == VWL_SEL_CLIPBOARD)
+	cbd = &clip_plus;
+    else
+	cbd = &clip_star;
+
+    // TODO: use growable buffer?
+    char_u *buf = alloc_clear(1000001); // 1 MB + 1 B buffer
+    char_u *start = buf;
+    ssize_t r = 0;
+    size_t total = 0;
+
+    struct pollfd pfd = {
+	.fd = fd,
+	.events = POLLIN
+    };
+
+    // read data
+    while (poll(&pfd, 1, 2) > 0)
+    {
+	if ((r = read(fd, start, 1000000 - total)) > 0)
+	{
+	    start = buf + r;
+	    total += (size_t)r;
+	}
+    }
+
+    if (total == 0)
+    {
+	clip_free_selection(cbd);	// nothing received, clear register
+	return;
+    }
+    clip_yank_selection(motion_type, buf, (long)total, cbd);
+    vim_free(buf);
+}
+
+    void
+clip_wl_request_selection(Clipboard_T *cbd)
+{
+    const char *mime_types[1] = {"text/plain;charset=utf-8"};
+    int err = vwl_clip_get_selection(clip_wl_request_selection_cb,
+		    mime_types, 1);
+
+    if (err == FAIL)
+	// do something
+	;
 }
 
 #endif // FEAT_CLIPBOARD

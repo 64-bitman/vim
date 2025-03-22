@@ -246,6 +246,7 @@
 # define __ARGS(x)  x
 #endif
 
+
 #if (defined(UNIX) || defined(VMS)) \
 	&& (!defined(MACOS_X) || defined(HAVE_CONFIG_H))
 # include "os_unix.h"	    // bring lots of system header files
@@ -2436,6 +2437,7 @@ typedef int (*opt_expand_cb_T)(optexpand_T *args, int *numMatches, char_u ***mat
 
 #include "ex_cmds.h"	    // Ex command defines
 #include "spell.h"	    // spell checking stuff
+#include "wayland.h"
 
 #include "proto.h"	    // function prototypes
 
