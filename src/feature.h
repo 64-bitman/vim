@@ -905,6 +905,14 @@
 # endif
 #endif
 
+#if defined(FEAT_NORMAL) && defined(UNIX)
+# define FEAT_WAYLAND
+# define FEAT_WAYLAND_CLIPBOARD
+# ifndef FEAT_CLIPBOARD
+#  define FEAT_CLIPBOARD
+# endif
+#endif
+
 /*
  * +dnd		Drag'n'drop support.  Always used for the GTK+ GUI.
  */

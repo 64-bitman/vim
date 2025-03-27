@@ -125,6 +125,28 @@ static void sig_sysmouse SIGPROTOARG;
 # define SIGWINCH SIGWINDOW
 #endif
 
+#ifdef FEAT_WAYLAND
+#include <wayland-client.h>
+#include <poll.h>
+
+static void vwl_registry_listener_global(void *data UNUSED,
+	struct wl_registry *registry UNUSED, uint32_t name,
+	const char *interface, uint32_t version);
+static void vwl_registry_listener_global_remove(void *data UNUSED,
+	struct wl_registry *registry UNUSED, uint32_t name);
+
+static struct wl_registry_listener vwl_registry_listener = {
+    .global = vwl_registry_listener_global,
+    .global_remove = vwl_registry_listener_global_remove
+};
+
+#ifdef FEAT_WAYLAND_CLIPBOARD
+#include "wlr-data-control-unstable-v1.h"
+static void vzwlr_remove_clipboard(void);
+#endif
+
+#endif
+
 #ifdef FEAT_X11
 # include <X11/Xlib.h>
 # include <X11/Xutil.h>
@@ -133,6 +155,7 @@ static void sig_sysmouse SIGPROTOARG;
 #  include <X11/Intrinsic.h>
 #  include <X11/Shell.h>
 #  include <X11/StringDefs.h>
+
 static Widget	xterm_Shell = (Widget)0;
 static void clip_update(void);
 static void xterm_update(void);
@@ -8846,3 +8869,199 @@ start_timeout(long msec)
 }
 # endif // PROF_NSEC
 #endif  // FEAT_RELTIME
+
+#ifdef FEAT_WAYLAND
+
+/*
+ * Helper function for wl_display_flush. Returns OK on sucess and
+ * FAIL on failure.
+ */
+    int
+vwl_flush_requests(struct wl_display *display)
+{
+    struct pollfd fds = {
+	.fd = wl_display_get_fd(display),
+	.events = POLLOUT,
+    };
+    int ret;
+
+    // Send requests to compositor, difference from wl_display_roundtrip
+    // is that it doesn't block and does not wait for reponses from the
+    // compositor (or process events).
+
+    // Will try to write as much data, and if there is data that has not been
+    // written, errno is set to EAGAIN and -1 is returned. Therefore, we should
+    // poll the display fd until it is writable again.
+    while (errno = 0, (ret = wl_display_flush(display)) == -1
+	    && errno == EAGAIN)
+    {
+	if (poll(&fds, 1, 3000) == -1)
+	    return FAIL;
+    }
+    // return FAIL on error or timeout
+    if ((errno != 0 && errno != EAGAIN) || (ret == 0))
+	return FAIL;
+
+    return OK;
+}
+
+/*
+ * Connect to wayland display and get its registry, then add a listener
+ * so we can bind to the global objects we need. Should only be called once.
+ */
+    void
+vwl_setup_client(void)
+{
+    // TODO: add option to choose wayland socket?
+    vwl_display = wl_display_connect(NULL);
+
+    if (vwl_display == NULL)
+    {
+	verb_msg("Failed connecting to wayland display");
+	return;
+    }
+    vwl_registry = wl_display_get_registry(vwl_display);
+
+    if (vwl_registry == NULL)
+    {
+	verb_msg("Failed getting registry from wayland display");
+	goto error;
+    }
+
+    wl_registry_add_listener(vwl_registry, &vwl_registry_listener, NULL);
+
+    // Send requests to compositor
+    if (wl_display_roundtrip(vwl_display) == -1)
+    {
+	verb_msg("Failed sending requests to wayland compositor");
+	goto error;
+    }
+
+    vwl_display_active = TRUE;
+    return;
+error:
+    wl_display_disconnect(vwl_display);
+    vwl_display = NULL;
+    vwl_display_active = FALSE;
+}
+
+/*
+ * Will be called for each global object the compositor supports,
+ * bind to the ones we need.
+ */
+    static void
+vwl_registry_listener_global(void *data UNUSED,
+	struct wl_registry *registry UNUSED, uint32_t name,
+	const char *interface, uint32_t version)
+{
+#ifdef FEAT_WAYLAND_CLIPBOARD
+    if (strcmp(interface, zwlr_data_control_manager_v1_interface.name) == 0 &&
+	    version == (uint32_t)zwlr_data_control_manager_v1_interface.version
+	    && vzwlr_da_manager_v1 == NULL)
+    {
+	vzwlr_da_manager_v1 = wl_registry_bind(vwl_registry, name,
+		&zwlr_data_control_manager_v1_interface, version);
+	vzwlr_da_manager_v1_name = name;
+    }
+    else
+#endif
+    if (strcmp(interface, wl_seat_interface.name) == 0 &&
+	    version == (uint32_t)wl_seat_interface.version &&
+	    vwl_seat == NULL)
+    {
+	vwl_seat = wl_registry_bind(vwl_registry, name, &wl_seat_interface,
+		version);
+	vwl_seat_name = name;
+    }
+
+}
+
+/*
+ * Called when global object is removed, if so destroy it on our side.
+ */
+    static void
+vwl_registry_listener_global_remove(void *data UNUSED,
+	struct wl_registry *registry UNUSED, uint32_t name)
+{
+    if (name == vwl_seat_name)
+    {
+	wl_seat_destroy(vwl_seat);
+	vwl_seat = NULL;
+
+#ifdef FEAT_WAYLAND_CLIPBOARD
+	vzwlr_remove_clipboard();
+#endif
+    }
+#ifdef FEAT_WAYLAND_CLIPBOARD
+    else if (name == vzwlr_da_manager_v1_name)
+	vzwlr_remove_clipboard();
+#endif
+    wl_display_roundtrip(vwl_display);
+}
+
+#ifdef FEAT_WAYLAND_CLIPBOARD
+
+    static void
+vzwlr_remove_clipboard(void)
+{
+
+    if (vzwlr_da_manager_v1 != NULL)
+    {
+	zwlr_data_control_manager_v1_destroy(vzwlr_da_manager_v1);
+	vzwlr_da_manager_v1 = NULL;
+    }
+    vwl_da_active = FALSE;
+
+    if (vzwlr_da_device_v1 != NULL)
+    {
+	    zwlr_data_control_device_v1_destroy(vzwlr_da_device_v1);
+	    vzwlr_da_device_v1 = NULL;
+    }
+}
+
+/*
+ * Create required objects to allow communication with wayland clipboard.
+ * Should be called after wayland client has been setup.
+ * TODO: replace verb_msg with emsg()
+ */
+    void
+vwl_setup_clipboard(void)
+{
+    if (!vwl_display_active)
+    {
+	verb_msg("No connection to wayland display");
+	return;
+    }
+
+    if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL)
+    {
+	verb_msg("Failed setting up wayland clipboard");
+	return;
+    }
+
+    // Prioritize ext-data-control over zwlr-data-control
+    if (vzwlr_da_manager_v1 != NULL)
+    {
+	vwl_cur_da_protocol = VWL_DA_PROTOCOL_ZWLR;
+
+	vzwlr_da_device_v1 =
+	    zwlr_data_control_manager_v1_get_data_device(
+		vzwlr_da_manager_v1, vwl_seat);
+
+	if (vzwlr_da_device_v1 == NULL)
+	{
+	    verb_msg("Failed getting data device for wayland clipboard");
+	    return;
+	}
+    }
+
+    vwl_da_active = TRUE;
+}
+
+#endif
+
+/*
+ *
+ */
+
+#endif

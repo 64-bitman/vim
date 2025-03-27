@@ -7517,6 +7517,20 @@ f_has(typval_T *argvars, typval_T *rettv)
 		0
 #endif
 		},
+	{"wayland",
+#ifdef FEAT_WAYLAND
+		1
+#else
+		0
+#endif
+		},
+	{"wayland_clipboard",
+#ifdef FEAT_WAYLAND_CLIPBOARD
+		1
+#else
+		0
+#endif
+		},
 	{"wildignore", 1},
 	{"wildmenu", 1},
 	{"windows", 1},

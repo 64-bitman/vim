@@ -647,6 +647,13 @@ vim_main2(void)
     prepare_server(&params);
 #endif
 
+#ifdef FEAT_WAYLAND
+    vwl_setup_client();
+#ifdef FEAT_WAYLAND_CLIPBOARD
+    vwl_setup_clipboard();
+#endif
+#endif
+
     /*
      * If "-" argument given: Read file from stdin.
      * Do this before starting Raw mode, because it may change things that the

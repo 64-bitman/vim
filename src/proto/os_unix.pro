@@ -92,4 +92,7 @@ void xsmp_close(void);
 void stop_timeout(void);
 volatile sig_atomic_t *start_timeout(long msec);
 void delete_timer(void);
+int vwl_flush_requests(struct wl_display *display);
+void vwl_setup_client(void);
+void vwl_setup_clipboard(void);
 /* vim: set ft=c : */
