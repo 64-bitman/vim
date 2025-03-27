@@ -478,6 +478,10 @@ typedef long long vimlong_T;
 # include <errno.h>
 #endif
 
+#ifdef FEAT_WAYLAND
+#include <wayland-client.h>
+#endif
+
 /*
  * Allow other (non-unix) systems to configure themselves now
  * These are also in os_unix.h, because osdef.sh needs them there.
@@ -2265,6 +2269,15 @@ typedef int sock_T;
 #  endif
 # endif
 
+#ifdef FEAT_WAYLAND_CLIPBOARD
+// Type for wayland data control selection
+typedef enum {
+    VWL_DA_SELECTION_UNKNOWN,
+    VWL_DA_SELECTION_CLIPBOARD,
+    VWL_DA_SELECTION_PRIMARY,
+} vwl_da_selection_T;
+#endif
+
 // Info about selected text
 typedef struct
 {
@@ -2304,6 +2317,17 @@ typedef struct
     int_u	format;		// Vim's own special clipboard format
     int_u	format_raw;	// Vim's raw text clipboard format
 # endif
+
+#ifdef FEAT_WAYLAND_CLIPBOARD
+    union {
+	struct zwlr_data_control_offer_v1 *zwlr;
+    } offer;
+    char cur_mime[256];
+
+    // Selection type for wayland selection
+    vwl_da_selection_T sel_type;
+#endif
+
 # ifdef FEAT_GUI_HAIKU
     // No clipboard at the moment. TODO?
 # endif

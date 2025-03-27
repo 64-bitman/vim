@@ -19,6 +19,12 @@
 # include "winclip.pro"
 #endif
 
+#ifdef FEAT_WAYLAND_CLIPBOARD
+#include <wayland-client.h>
+#include <poll.h>
+#include "wlr-data-control-unstable-v1.h"
+#endif
+
 // Functions for copying and pasting text between applications.
 // This is always included in a GUI version, but may also be included when the
 // clipboard and mouse is available to a terminal version such as xterm.
@@ -30,6 +36,34 @@
 // for them.
 
 #if defined(FEAT_CLIPBOARD) || defined(PROTO)
+
+#ifdef FEAT_WAYLAND_CLIPBOARD
+static void vzwlr_da_offer_v1_listener_offer(void *data,
+	struct zwlr_data_control_offer_v1 *offer, const char *mime_type);
+
+static void vzwlr_da_device_v1_listener_data_offer(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer);
+static void vzwlr_da_device_v1_listener_selection(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer);
+static void vzwlr_da_device_v1_listener_primary_selection(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer);
+static void vzwlr_da_device_v1_listener_finished(void *data,
+	struct zwlr_data_control_device_v1 *device);
+
+static struct zwlr_data_control_device_v1_listener vzwlr_da_device_v1_listener = {
+    .data_offer = vzwlr_da_device_v1_listener_data_offer,
+    .selection = vzwlr_da_device_v1_listener_selection,
+    .primary_selection = vzwlr_da_device_v1_listener_primary_selection,
+    .finished = vzwlr_da_device_v1_listener_finished
+};
+
+static struct zwlr_data_control_offer_v1_listener vzwlr_da_offer_v1_listener = {
+    .offer = vzwlr_da_offer_v1_listener_offer
+};
+#endif
 
 /*
  * Selection stuff using Visual mode, for cutting and pasting text to other
@@ -59,7 +93,12 @@ clip_init(int can_use)
 	cb->state      = SELECT_CLEARED;
 
 	if (cb == &clip_plus)
+	{
+	    cb->sel_type = VWL_DA_SELECTION_CLIPBOARD;
 	    break;
+	}
+	else
+	    cb->sel_type = VWL_DA_SELECTION_PRIMARY;
 	cb = &clip_plus;
     }
 }
@@ -1210,13 +1249,19 @@ clip_gen_set_selection(Clipboard_T *cbd)
     static void
 clip_gen_request_selection(Clipboard_T *cbd)
 {
-#ifdef FEAT_XCLIPBOARD
+#if defined(FEAT_XCLIPBOARD) || defined(FEAT_WAYLAND_CLIPBOARD)
 # ifdef FEAT_GUI
     if (gui.in_use)
 	clip_mch_request_selection(cbd);
     else
 # endif
+    {
+#ifdef FEAT_WAYLAND_CLIPBOARD
+	clip_wl_request_selection(cbd);
+	return;
+#endif
 	clip_xterm_request_selection(cbd);
+    }
 #else
     clip_mch_request_selection(cbd);
 #endif
@@ -2227,5 +2272,175 @@ adjust_clip_reg(int *rp)
 	*rp = 0;
     }
 }
+
+#ifdef FEAT_WAYLAND_CLIPBOARD
+
+    static void
+vwl_da_receive_data(Clipboard_T *cbd, int fd)
+{
+    int		motion_type = MAUTO;
+
+    if (cbd->sel_type == VWL_DA_SELECTION_CLIPBOARD)
+	cbd = &clip_plus;
+    else
+	cbd = &clip_star;
+
+    // TODO: use growable buffer?
+    char_u *buf = alloc_clear(1000001); // 1 MB + 1 B buffer
+    char_u *start = buf;
+    ssize_t r = 0;
+    size_t total = 0;
+
+    struct pollfd pfd = {
+	.fd = fd,
+	.events = POLLIN
+    };
+
+    // read data
+    while (poll(&pfd, 1, 0) > 0)
+    {
+	if ((r = read(fd, start, 1000000 - total)) > 0)
+	{
+	    start = buf + r;
+	    total += (size_t)r;
+	}
+    }
+
+    if (total == 0)
+    {
+	clip_free_selection(cbd);	// nothing received, clear register
+	vim_free(buf);
+	return;
+    }
+    clip_yank_selection(motion_type, buf, (long)total, cbd);
+    vim_free(buf);
+}
+
+    static int
+vwl_allowed_mime_type(const char *mime)
+{
+    if (STRCMP(mime, "text/plain") == 0)
+	return TRUE;
+    return FALSE;
+}
+
+    static void
+vzwlr_da_offer_v1_listener_offer(void *data,
+	struct zwlr_data_control_offer_v1 *offer, const char *mime_type)
+{
+    Clipboard_T *cbd = data;
+
+    if (cbd->offer.zwlr != NULL)
+	return;
+
+    if (vwl_allowed_mime_type(mime_type))
+    {
+	cbd->offer.zwlr = offer;
+	vim_snprintf(cbd->cur_mime, 256, "%s", mime_type);
+    }
+}
+
+    static void
+vzwlr_da_device_v1_listener_data_offer(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer)
+{
+    if (offer == NULL)
+	return;
+
+    if (zwlr_data_control_offer_v1_add_listener(offer,
+		&vzwlr_da_offer_v1_listener, data) == -1)
+	verb_msg("Failed adding listener to wayland offer object");
+}
+
+    static void
+vzwlr_da_receive_data(Clipboard_T *cbd, vwl_da_selection_T sel_type)
+{
+    if (cbd->sel_type != sel_type)
+	goto exit;
+
+    int fds[2];
+
+    if (pipe(fds) == -1)
+    {
+	verb_msg("Failed opening pipe in order to receive wayland selection data");
+	return;
+    }
+
+    zwlr_data_control_offer_v1_receive(cbd->offer.zwlr, cbd->cur_mime, fds[1]);
+    vwl_flush_requests(vwl_display);
+
+    vwl_da_receive_data(cbd, fds[0]);
+
+    close(fds[0]);
+    close(fds[1]);
+exit:
+    zwlr_data_control_offer_v1_destroy(cbd->offer.zwlr);
+    cbd->offer.zwlr = NULL;
+}
+
+    static void
+vzwlr_da_device_v1_listener_selection(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer)
+{
+    if (offer == ((Clipboard_T*)data)->offer.zwlr)
+	vzwlr_da_receive_data(data, VWL_DA_SELECTION_CLIPBOARD);
+}
+
+    static void
+vzwlr_da_device_v1_listener_primary_selection(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer)
+{
+    if (offer == ((Clipboard_T*)data)->offer.zwlr)
+	vzwlr_da_receive_data(data, VWL_DA_SELECTION_PRIMARY);
+}
+
+    static void
+vzwlr_da_device_v1_listener_finished(void *data,
+	struct zwlr_data_control_device_v1 *device)
+{
+    Clipboard_T *cbd = data;
+
+    zwlr_data_control_device_v1_destroy(device);
+
+    if (cbd->offer.zwlr != NULL)
+    {
+	zwlr_data_control_offer_v1_destroy(cbd->offer.zwlr);
+	cbd->offer.zwlr = NULL;
+    }
+}
+
+    void
+clip_wl_request_selection(Clipboard_T *cbd)
+{
+    if (!vwl_da_active)
+    {
+	verb_msg("Wayland data control has not been set up");
+	return;
+    }
+
+    void *device;
+
+    if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+    {
+	device = zwlr_data_control_manager_v1_get_data_device(
+		vzwlr_da_manager_v1, vwl_seat);
+
+	if (zwlr_data_control_device_v1_add_listener(device,
+		&vzwlr_da_device_v1_listener, cbd) == -1)
+	    verb_msg("Failed adding listener to wayland data device object");
+
+	wl_display_roundtrip(vwl_display);
+
+	zwlr_data_control_device_v1_destroy(device);
+	cbd->offer.zwlr = NULL;
+    }
+
+    wl_display_roundtrip(vwl_display);
+}
+
+#endif
 
 #endif // FEAT_CLIPBOARD
