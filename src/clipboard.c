@@ -53,6 +53,11 @@ static void vzwlr_da_device_v1_listener_primary_selection(void *data,
 static void vzwlr_da_device_v1_listener_finished(void *data,
 	struct zwlr_data_control_device_v1 *device);
 
+static void vzwlr_da_source_v1_listener_send(void *data,
+	struct zwlr_data_control_source_v1 *source, const char *mime, int fd);
+static void vzwlr_da_source_v1_listener_cancelled(void *data,
+	struct zwlr_data_control_source_v1 *source);
+
 static struct zwlr_data_control_device_v1_listener vzwlr_da_device_v1_listener = {
     .data_offer = vzwlr_da_device_v1_listener_data_offer,
     .selection = vzwlr_da_device_v1_listener_selection,
@@ -63,6 +68,25 @@ static struct zwlr_data_control_device_v1_listener vzwlr_da_device_v1_listener =
 static struct zwlr_data_control_offer_v1_listener vzwlr_da_offer_v1_listener = {
     .offer = vzwlr_da_offer_v1_listener_offer
 };
+
+static struct zwlr_data_control_source_v1_listener vzwlr_da_source_v1_listener = {
+    .send = vzwlr_da_source_v1_listener_send,
+    .cancelled = vzwlr_da_source_v1_listener_cancelled
+};
+
+#define MIME_TEXT_UTF8 "text/plain;charset=utf-8"
+#define MIME_TEXT "text/plain"
+
+// Mime types we support sending and receiving
+// Make sure to sync with mime_T enum in vim.h
+// Order matters!
+static const char *supported_mimes[] = {
+    MIME_TEXT_UTF8,
+    MIME_TEXT,
+    VIMENC_ATOM_NAME,
+    VIM_ATOM_NAME
+};
+
 #endif
 
 /*
@@ -91,14 +115,11 @@ clip_init(int can_use)
 	cb->end.lnum   = 0;
 	cb->end.col    = 0;
 	cb->state      = SELECT_CLEARED;
+	cb->method     = CB_METHOD_X11; // Default to X11, we will set to
+	                                // wayland if we are able to connect.
 
 	if (cb == &clip_plus)
-	{
-	    cb->sel_type = VWL_DA_SELECTION_CLIPBOARD;
 	    break;
-	}
-	else
-	    cb->sel_type = VWL_DA_SELECTION_PRIMARY;
 	cb = &clip_plus;
     }
 }
@@ -154,6 +175,7 @@ clip_gen_own_selection(Clipboard_T *cbd)
 	return clip_mch_own_selection(cbd);
     else
 # endif
+	return clip_wl_own_selection(cbd);
 	return clip_xterm_own_selection(cbd);
 #else
     return clip_mch_own_selection(cbd);
@@ -205,6 +227,8 @@ clip_gen_lose_selection(Clipboard_T *cbd)
 	clip_mch_lose_selection(cbd);
     else
 # endif
+	clip_wl_lose_selection(cbd);
+	return;
 	clip_xterm_lose_selection(cbd);
 #else
     clip_mch_lose_selection(cbd);
@@ -2278,37 +2302,52 @@ adjust_clip_reg(int *rp)
     static void
 vwl_da_receive_data(Clipboard_T *cbd, int fd)
 {
-    int		motion_type = MAUTO;
-
-    if (cbd->sel_type == VWL_DA_SELECTION_CLIPBOARD)
-	cbd = &clip_plus;
-    else
-	cbd = &clip_star;
-
-    // TODO: use growable buffer?
-    char_u *buf = alloc_clear(1000001); // 1 MB + 1 B buffer
-    char_u *start = buf;
+    int	motion_type = MAUTO;
+    char_u *buf, *tmp;
+    char_u *start;
     ssize_t r = 0;
-    size_t total = 0;
-
+    size_t total = 0, max_total = 4096; // initial buffer size if 4096 bytes
     struct pollfd pfd = {
 	.fd = fd,
 	.events = POLLIN
     };
 
-    // read data
-    while (poll(&pfd, 1, 0) > 0)
+    // Return if pipe is still empty after 3 seconds
+    if (poll(&pfd, 1, 3000) <= 0)
+	return;
+
+    if ((buf = alloc_clear(max_total)) == NULL)
+	return;
+    start = buf;
+
+    while ((r = read(fd, start, max_total - 1 - total)) > 0)
     {
-	if ((r = read(fd, start, 1000000 - total)) > 0)
+	start += r;
+	total += (size_t)r;
+
+	// Break out of loop if we have read all the data
+	if (poll(&pfd, 1, 0) <= 0)
+	    break;
+
+	// Realloc if we are at the end of the buffer
+	if (total == max_total - 1)
 	{
-	    start = buf + r;
-	    total += (size_t)r;
+	    tmp = vim_realloc(buf, max_total * 2);
+
+	    if (tmp == NULL)
+		break;
+	    max_total *= 2; // Double buffer size each time
+	    buf = tmp;
+	    start = buf + total;
+
+	    // Zero out the newly allocated memory part
+	    vim_memset(buf + total, 0, max_total - total);
 	}
     }
 
     if (total == 0)
     {
-	clip_free_selection(cbd);	// nothing received, clear register
+	clip_free_selection(cbd); // Nothing received, clear register
 	vim_free(buf);
 	return;
     }
@@ -2316,12 +2355,73 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
     vim_free(buf);
 }
 
-    static int
-vwl_allowed_mime_type(const char *mime)
+    static void
+vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
 {
-    if (STRCMP(mime, "text/plain") == 0)
-	return TRUE;
-    return FALSE;
+    long_u length;
+    char_u *string;
+    ssize_t written = 0, total = 0;
+    int motion_type, did_vim = FALSE, did_vimenc = FALSE;
+    struct pollfd pfd = {
+	.fd = fd,
+	.events = POLLOUT
+    };
+
+    if (!cbd->owned)
+    {
+	close(fd);
+	return;
+    }
+
+    // TODO: add support for vim and vimenc format types
+    clip_get_selection(cbd);
+    motion_type = clip_convert_selection(&string, &length, cbd);
+
+    if (motion_type < 0)
+	goto exit;
+
+    while (total < length && poll(&pfd, 1, 3000) > 0)
+    {
+	written = write(fd, string + total, length - total);
+
+	if (written == -1)
+	    break;
+	total += written;
+    }
+
+    /* while (total < length && poll(&pfd, 1, 3000) > 0) */
+    /* { */
+	/* if (!did_vim) */
+	/* { */
+	    /* if (total == sizeof(motion_type)) */
+	    /* { */
+		/* total = 0; */
+		/* did_vim = TRUE; */
+	    /* } */
+	    /* else */
+		/* written = write(fd, &motion_type + total, */
+			/* sizeof(motion_type) - total); */
+	/* } */
+	/* else if (!did_vimenc) */
+	/* { */
+	    /* if (total == STRLEN(p_enc)) */
+	    /* { */
+		/* total = 0; */
+		/* did_vimenc = TRUE; */
+	    /* } */
+	    /* written = write(fd, p_enc + total, STRLEN(p_enc) - 1 - total); */
+	/* } */
+	/* else */
+	    /* written = write(fd, string + total, length - total - 1); */
+
+	/* if (written == -1) */
+	    /* break; */
+	/* total += written; */
+    /* } */
+
+exit:
+    vim_free(string);
+    close(fd);
 }
 
     static void
@@ -2333,11 +2433,16 @@ vzwlr_da_offer_v1_listener_offer(void *data,
     if (cbd->offer.zwlr != NULL)
 	return;
 
-    if (vwl_allowed_mime_type(mime_type))
-    {
+    for (int i = 0; i < sizeof(supported_mimes)/sizeof(*supported_mimes); i++)
+	if (STRCMP(mime_type, supported_mimes[i]) == 0)
+	    goto supported;
+
+    return;
+
+supported:
 	cbd->offer.zwlr = offer;
-	vim_snprintf(cbd->cur_mime, 256, "%s", mime_type);
-    }
+
+	cbd->cur_mime = vim_strsave((char_u*)mime_type);
 }
 
     static void
@@ -2354,29 +2459,39 @@ vzwlr_da_device_v1_listener_data_offer(void *data,
 }
 
     static void
-vzwlr_da_receive_data(Clipboard_T *cbd, vwl_da_selection_T sel_type)
+vzwlr_da_receive_data(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
+	struct zwlr_data_control_offer_v1 *offer)
 {
-    if (cbd->sel_type != sel_type)
+    if (cbd != cmp_cbd || cbd->cur_mime == NULL || offer == NULL 
+	    || offer != cbd->offer.zwlr)
 	goto exit;
 
     int fds[2];
 
     if (pipe(fds) == -1)
     {
-	verb_msg("Failed opening pipe in order to receive wayland selection data");
-	return;
+	emsg(e_wayland_cb_failed_opening_pipe);
+	goto exit;
     }
 
-    zwlr_data_control_offer_v1_receive(cbd->offer.zwlr, cbd->cur_mime, fds[1]);
-    vwl_flush_requests(vwl_display);
+    zwlr_data_control_offer_v1_receive(cbd->offer.zwlr, (char*)cbd->cur_mime,
+	    fds[1]);
 
-    vwl_da_receive_data(cbd, fds[0]);
+    if (vwl_flush_requests() == OK)
+	vwl_da_receive_data(cbd, fds[0]);
+    else
+	emsg(e_wayland_cb_failed_receiving_data);
 
     close(fds[0]);
     close(fds[1]);
 exit:
-    zwlr_data_control_offer_v1_destroy(cbd->offer.zwlr);
-    cbd->offer.zwlr = NULL;
+    if (cbd->offer.zwlr != NULL)
+    {
+	zwlr_data_control_offer_v1_destroy(cbd->offer.zwlr);
+	cbd->offer.zwlr = NULL;
+    }
+    vim_free(cbd->cur_mime);
+    cbd->cur_mime = NULL;
 }
 
     static void
@@ -2384,8 +2499,7 @@ vzwlr_da_device_v1_listener_selection(void *data,
 	struct zwlr_data_control_device_v1 *device,
 	struct zwlr_data_control_offer_v1 *offer)
 {
-    if (offer == ((Clipboard_T*)data)->offer.zwlr)
-	vzwlr_da_receive_data(data, VWL_DA_SELECTION_CLIPBOARD);
+    vzwlr_da_receive_data(data, &clip_plus, offer);
 }
 
     static void
@@ -2393,8 +2507,7 @@ vzwlr_da_device_v1_listener_primary_selection(void *data,
 	struct zwlr_data_control_device_v1 *device,
 	struct zwlr_data_control_offer_v1 *offer)
 {
-    if (offer == ((Clipboard_T*)data)->offer.zwlr)
-	vzwlr_da_receive_data(data, VWL_DA_SELECTION_PRIMARY);
+    vzwlr_da_receive_data(data, &clip_star, offer);
 }
 
     static void
@@ -2410,6 +2523,8 @@ vzwlr_da_device_v1_listener_finished(void *data,
 	zwlr_data_control_offer_v1_destroy(cbd->offer.zwlr);
 	cbd->offer.zwlr = NULL;
     }
+    vim_free(cbd->cur_mime);
+    cbd->cur_mime = NULL;
 }
 
     void
@@ -2417,10 +2532,9 @@ clip_wl_request_selection(Clipboard_T *cbd)
 {
     if (!vwl_da_active)
     {
-	verb_msg("Wayland data control has not been set up");
+	emsg(e_wayland_cb_data_control_unavailable);
 	return;
     }
-
     void *device;
 
     if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
@@ -2428,19 +2542,115 @@ clip_wl_request_selection(Clipboard_T *cbd)
 	device = zwlr_data_control_manager_v1_get_data_device(
 		vzwlr_da_manager_v1, vwl_seat);
 
+	if (device == NULL)
+	{
+	    emsg(e_wayland_failed_acquiring_object);
+	    return;
+	}
+
 	if (zwlr_data_control_device_v1_add_listener(device,
 		&vzwlr_da_device_v1_listener, cbd) == -1)
-	    verb_msg("Failed adding listener to wayland data device object");
+	{
+	    zwlr_data_control_device_v1_destroy(device);
+	    emsg(e_wayland_failed_adding_listener);
+	    return;
+	}
 
-	wl_display_roundtrip(vwl_display);
+	vwl_send_requests();
 
 	zwlr_data_control_device_v1_destroy(device);
-	cbd->offer.zwlr = NULL;
     }
-
-    wl_display_roundtrip(vwl_display);
 }
 
-#endif
+static void vzwlr_da_source_v1_listener_send(void *data,
+	struct zwlr_data_control_source_v1 *source, const char *mime, int fd)
+{
+    vwl_da_send_data(data, fd, mime);
+}
+
+static void vzwlr_da_source_v1_listener_cancelled(void *data,
+	struct zwlr_data_control_source_v1 *source)
+{
+    clip_lose_selection(data);
+}
+
+/*
+ * Start listening for requests from other wayland clients to
+ * receive data from us. Returns OK on success and FAIL on failure.
+ */
+    int
+clip_wl_own_selection(Clipboard_T *cbd)
+{
+    if (!vwl_da_active)
+    {
+	emsg(e_wayland_cb_data_control_unavailable);
+	return FAIL;
+    }
+    void *source;
+
+    // Destroy previous source if it hasn't been destroyed yet
+    clip_wl_lose_selection(cbd);
+
+    if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+    {
+	// Shouldn't happen
+	if (cbd->source.zwlr != NULL)
+	    return FAIL;
+
+	source = zwlr_data_control_manager_v1_create_data_source(
+		vzwlr_da_manager_v1);
+
+	cbd->source.zwlr = source;
+
+	if (source == NULL)
+	{
+	    emsg(e_wayland_failed_acquiring_object);
+	    return FAIL;
+	}
+
+	if (zwlr_data_control_source_v1_add_listener(source,
+		    &vzwlr_da_source_v1_listener, cbd) == -1)
+	{
+	    emsg(e_wayland_failed_adding_listener);
+	    zwlr_data_control_source_v1_destroy(source);
+	    return FAIL;
+	}
+	// Advertise the mime types we support sending
+	for (int i = 0; i < sizeof(supported_mimes)/sizeof(*supported_mimes); i++)
+	{
+	    if (STRCMP(supported_mimes[i], MIME_TEXT_UTF8) == 0
+		    && !enc_utf8)
+		// Skip utf8 if we encoding is not set to it
+		continue;
+	    zwlr_data_control_source_v1_offer(source, supported_mimes[i]);
+	}
+
+	if (cbd == &clip_plus)
+	    zwlr_data_control_device_v1_set_selection(vzwlr_da_device_v1,
+		    source);
+	else if (cbd == &clip_star)
+	    zwlr_data_control_device_v1_set_primary_selection(vzwlr_da_device_v1,
+		    source);
+    }
+
+    wl_display_dispatch(vwl_display);
+    return OK;
+}
+
+    void
+clip_wl_lose_selection(Clipboard_T *cbd)
+{
+    if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+    {
+	if (cbd->source.zwlr != NULL)
+	{
+	    zwlr_data_control_source_v1_destroy(cbd->source.zwlr);
+	    cbd->source.zwlr = NULL;
+	}
+    }
+}
+
+
+#endif // FEAT_WAYLAND_CLIPBOARD
 
 #endif // FEAT_CLIPBOARD

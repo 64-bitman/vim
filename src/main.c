@@ -651,6 +651,9 @@ vim_main2(void)
     vwl_setup_client();
 #ifdef FEAT_WAYLAND_CLIPBOARD
     vwl_setup_clipboard();
+    // temp
+    clip_plus.method = CB_METHOD_WAYLAND;
+    clip_star.method = CB_METHOD_WAYLAND;
 #endif
 #endif
 
