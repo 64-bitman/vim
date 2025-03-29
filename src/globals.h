@@ -972,7 +972,7 @@ EXTERN int	gui_win_y INIT(= -1);
 
 #ifdef FEAT_CLIPBOARD
 EXTERN Clipboard_T clip_star;	// PRIMARY selection in X11
-# ifdef FEAT_X11
+# if defined(FEAT_X11) || defined(FEAT_WAYLAND_CLIPBOARD)
 EXTERN Clipboard_T clip_plus;	// CLIPBOARD selection in X11
 # else
 #  define clip_plus clip_star	// there is only one clipboard
@@ -2073,6 +2073,7 @@ EXTERN struct wl_display *vwl_display;
 EXTERN struct wl_registry *vwl_registry;
 EXTERN struct wl_seat *vwl_seat;
 EXTERN uint32_t vwl_seat_name;
+EXTERN int vwl_display_fd;
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 EXTERN int vwl_da_active INIT(= FALSE);

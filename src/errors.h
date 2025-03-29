@@ -3715,4 +3715,24 @@ EXTERN char e_variadic_tuple_must_end_with_list_type_str[]
 	INIT(= N_("E1539: Variadic tuple must end with a list type: %s"));
 EXTERN char e_cannot_use_variadic_tuple_in_concatenation[]
 	INIT(= N_("E1540: Cannot use a variadic tuple in concatenation"));
+#ifdef FEAT_WAYLAND
+EXTERN char e_wayland_display_not_connected[]
+	INIT(= N_("E1541: Not connected to any wayland display"));
+EXTERN char e_wayland_objects_do_not_exist[]
+	INIT(= N_("E1542: Required wayland protocol objects do not exist"));
+EXTERN char e_wayland_failed_sending_requests[]
+	INIT(= N_("E1543: Failed sending requests to wayland compositor"));
+EXTERN char e_wayland_failed_acquiring_object[]
+	INIT(= N_("E1544: Failed creating or acquiring wayland protocol object"));
+EXTERN char e_wayland_failed_adding_listener[]
+	INIT(= N_("E1545: Failed adding listener to wayland protocol object"));
+#endif
+#ifdef FEAT_WAYLAND_CLIPBOARD
+EXTERN char e_wayland_cb_data_control_unavailable[]
+	INIT(= N_("E1546: Cannot access wayland selection, data control is unavailable"));
+EXTERN char e_wayland_cb_failed_opening_pipe[]
+	INIT(= N_("E1547: Cannot receive data, failed opening pipe"));
+EXTERN char e_wayland_cb_failed_receiving_data[]
+	INIT(= N_("E1548: Failed receiving data for wayland selection"));
+#endif
 #endif

@@ -2276,7 +2276,15 @@ typedef enum {
     VWL_DA_SELECTION_CLIPBOARD,
     VWL_DA_SELECTION_PRIMARY,
 } vwl_da_selection_T;
+
 #endif
+
+// Methods for accessing the clipboard
+typedef enum {
+    CB_METHOD_UNKNOWN,
+    CB_METHOD_X11,
+    CB_METHOD_WAYLAND
+} cb_method_T;
 
 // Info about selected text
 typedef struct
@@ -2286,6 +2294,7 @@ typedef struct
     pos_T	start;		// Start of selected area
     pos_T	end;		// End of selected area
     int		vmode;		// Visual mode character
+    cb_method_T method;         // Method we are using to access clipboard
 
     // Fields for selection that doesn't use Visual mode
     short_u	origin_row;
@@ -2320,12 +2329,13 @@ typedef struct
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
     union {
+	struct zwlr_data_control_source_v1 *zwlr;
+    } source;
+
+    union {
 	struct zwlr_data_control_offer_v1 *zwlr;
     } offer;
-    char cur_mime[256];
-
-    // Selection type for wayland selection
-    vwl_da_selection_T sel_type;
+    char_u *cur_mime; // Current mime type for selection
 #endif
 
 # ifdef FEAT_GUI_HAIKU
