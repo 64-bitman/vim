@@ -3722,18 +3722,16 @@ EXTERN char e_wayland_objects_do_not_exist[]
 	INIT(= N_("E1542: Required wayland protocol objects do not exist"));
 EXTERN char e_wayland_failed_sending_requests[]
 	INIT(= N_("E1543: Error sending requests to wayland compositor"));
+EXTERN char e_wayland_failed_dispatching_requests[]
+	INIT(= N_("E1544: Error dispatching requests from wayland compositor"));
 EXTERN char e_wayland_failed_acquiring_object[]
-	INIT(= N_("E1544: Failed creating or acquiring wayland protocol object"));
+	INIT(= N_("E1545: Failed creating or acquiring wayland protocol object"));
 EXTERN char e_wayland_failed_adding_listener[]
-	INIT(= N_("E1545: Failed adding listener to wayland protocol object"));
+	INIT(= N_("E1546: Failed adding listener to wayland protocol object"));
 #endif
 #ifdef FEAT_WAYLAND_CLIPBOARD
 EXTERN char e_wayland_cb_data_control_unavailable[]
-	INIT(= N_("E1546: Cannot access wayland selection, data control is unavailable"));
-EXTERN char e_wayland_cb_failed_opening_pipe[]
-	INIT(= N_("E1547: Cannot receive data, failed opening pipe"));
-EXTERN char e_wayland_cb_failed_receiving_data[]
-	INIT(= N_("E1548: Failed receiving data for wayland selection"));
+	INIT(= N_("E1547: Cannot access wayland selection, data control is unavailable"));
 #endif
 #endif
 EXTERN char e_unicode_val_too_large[]

@@ -21,7 +21,6 @@
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 #include <wayland-client.h>
-#include <poll.h>
 #include "wlr-data-control-unstable-v1.h"
 #endif
 
@@ -2303,14 +2302,29 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
     int	motion_type = MAUTO;
     ssize_t r = 0;
     size_t total = 0, max_total = 4096; // initial buffer size if 4096 bytes
+#ifndef HAVE_SELECT
     struct pollfd pfd = {
 	.fd = fd,
 	.events = POLLIN
     };
 
-    // Return if pipe is still empty after 3 seconds
     if (poll(&pfd, 1, 3000) <= 0)
 	return;
+#else
+    fd_set rfds;
+    struct timeval tv;
+
+    FD_ZERO(&rfds);
+    FD_SET(fd, &rfds);
+
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+
+    if (select(fd + 1, &rfds, NULL, NULL, &tv) <= 0)
+	return;
+    tv.tv_sec = 0;
+    tv.tv_usec = 10 * 1000;
+#endif
 
     if ((buf = alloc_clear(max_total)) == NULL)
 	return;
@@ -2323,8 +2337,13 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
 
 	// Break out of loop if we have read all the data
 	// TODO add option to configure timeout?
+#ifndef HAVE_SELECT
 	if (poll(&pfd, 1, 10) <= 0)
 	    break;
+#else
+	if (select(fd + 1, &rfds, NULL, NULL, &tv) <= 0)
+	    break;
+#endif
 
 	// Realloc if we are at the end of the buffer
 	if (total == max_total - 1)
@@ -2397,10 +2416,21 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
     ssize_t written = 0, total = 0;
     int did_vimenc = TRUE;
     char_u motion_type;
+#ifndef HAVE_SELECT
     struct pollfd pfd = {
 	.fd = fd,
 	.events = POLLOUT
     };
+#else
+    fd_set wfds;
+    struct timeval tv;
+
+    FD_ZERO(&wfds);
+    FD_SET(fd, &wfds);
+
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+#endif
 
     if (!cbd->owned)
     {
@@ -2415,7 +2445,12 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
 
     if (STRCMP(mime, VIM_ATOM_NAME) == 0 || STRCMP(mime, VIMENC_ATOM_NAME) == 0)
     {
+
+#ifndef HAVE_SELECT
 	if (poll(&pfd, 1, 3000) > 0)
+#else
+	if (select(fd + 1, NULL, &wfds, NULL, &tv) <= 0)
+#endif
 	{
 	    written = write(fd, &motion_type, sizeof(motion_type));
 	    if (written == -1)
@@ -2426,7 +2461,12 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
     if (STRCMP(mime, VIMENC_ATOM_NAME) == 0)
 	did_vimenc = FALSE;
 
-    while (total < length && poll(&pfd, 1, 3000) > 0)
+    while (total < length &&
+#ifndef HAVE_SELECT
+	    poll(&pfd, 1, 3000) > 0)
+#else
+	    select(fd + 1, NULL, &wfds, NULL, &tv) > 0)
+#endif
     {
 	if (!did_vimenc)
 	{
@@ -2512,7 +2552,7 @@ vzwlr_da_receive_data(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
 
     if (pipe(fds) == -1)
     {
-	emsg(e_wayland_cb_failed_opening_pipe);
+	verb_msg("Could not open pipe");
 	goto exit;
     }
 
@@ -2522,7 +2562,7 @@ vzwlr_da_receive_data(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
     if (vwl_flush_requests() == OK)
 	vwl_da_receive_data(cbd, fds[0]);
     else
-	emsg(e_wayland_cb_failed_receiving_data);
+	verb_msg("Failed receiving data");
 
     close(fds[0]);
     close(fds[1]);
@@ -2573,7 +2613,7 @@ clip_wl_request_selection(Clipboard_T *cbd)
 {
     if (!vwl_da_active)
     {
-	emsg(e_wayland_cb_data_control_unavailable);
+	emsg(_(e_wayland_cb_data_control_unavailable));
 	return;
     }
     void *device;
@@ -2587,7 +2627,7 @@ clip_wl_request_selection(Clipboard_T *cbd)
 
 	if (device == NULL)
 	{
-	    emsg(e_wayland_failed_acquiring_object);
+	    emsg(_(e_wayland_failed_acquiring_object));
 	    return;
 	}
 
@@ -2595,7 +2635,7 @@ clip_wl_request_selection(Clipboard_T *cbd)
 		&vzwlr_da_device_v1_listener, cbd) == -1)
 	{
 	    zwlr_data_control_device_v1_destroy(device);
-	    emsg(e_wayland_failed_adding_listener);
+	    emsg(_(e_wayland_failed_adding_listener));
 	    return;
 	}
 
@@ -2627,7 +2667,7 @@ clip_wl_own_selection(Clipboard_T *cbd)
 {
     if (!vwl_da_active)
     {
-	emsg(e_wayland_cb_data_control_unavailable);
+	emsg(_(e_wayland_cb_data_control_unavailable));
 	return FAIL;
     }
     void *source;
@@ -2648,14 +2688,14 @@ clip_wl_own_selection(Clipboard_T *cbd)
 
 	if (source == NULL)
 	{
-	    emsg(e_wayland_failed_acquiring_object);
+	    emsg(_(e_wayland_failed_acquiring_object));
 	    return FAIL;
 	}
 
 	if (zwlr_data_control_source_v1_add_listener(source,
 		    &vzwlr_da_source_v1_listener, cbd) == -1)
 	{
-	    emsg(e_wayland_failed_adding_listener);
+	    emsg(_(e_wayland_failed_adding_listener));
 	    zwlr_data_control_source_v1_destroy(source);
 	    return FAIL;
 	}

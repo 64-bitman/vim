@@ -1,5 +1,4 @@
 /* vi:set ts=8 sts=4 sw=4 noet:
- *
  * VIM - Vi IMproved	by Bram Moolenaar
  *	      OS/2 port by Paul Slootman
  *	      VMS merge by Zoltan Arpadffy
@@ -127,7 +126,6 @@ static void sig_sysmouse SIGPROTOARG;
 
 #ifdef FEAT_WAYLAND
 #include <wayland-client.h>
-#include <poll.h>
 
 static void vwl_registry_listener_global(void *data UNUSED,
 	struct wl_registry *registry UNUSED, uint32_t name,
@@ -140,9 +138,12 @@ static struct wl_registry_listener vwl_registry_listener = {
     .global_remove = vwl_registry_listener_global_remove
 };
 
+static void vwl_update(int block);
+
 #ifdef FEAT_WAYLAND_CLIPBOARD
 #include "wlr-data-control-unstable-v1.h"
-static void vzwlr_remove_clipboard(void);
+static void may_restore_wayland_clipboard(void);
+static void vwl_remove_clipboard(void);
 #endif
 
 #endif
@@ -1833,7 +1834,7 @@ x_IOerror_handler(Display *dpy UNUSED)
  * (e.g. through tmux).
  */
     static void
-may_restore_clipboard(void)
+may_restore_x11_clipboard(void)
 {
     // No point in restoring the connecting if we are exiting or dying.
     if (!exiting && !v_dying && xterm_dpy_retry_count > 0)
@@ -1873,7 +1874,7 @@ ex_xrestore(exarg_T *eap)
     clear_xterm_clip();
     x11_window = 0;
     xterm_dpy_retry_count = 5;  // Try reconnecting five times
-    may_restore_clipboard();
+    may_restore_x11_clipboard();
 }
 #endif
 
@@ -6528,8 +6529,11 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 #endif
 #ifndef HAVE_SELECT
 			// each channel may use in, out and err
-	struct pollfd   fds[6 + 3 * MAX_OPEN_CHANNELS];
+	struct pollfd   fds[6 + 4 * MAX_OPEN_CHANNELS];
 	int		nfd;
+#ifdef FEAT_WAYLAND_CLIPBOARD
+	int             wayland_idx = -1;
+#endif
 # ifdef FEAT_XCLIPBOARD
 	int		xterm_idx = -1;
 # endif
@@ -6553,6 +6557,16 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	fds[0].events = POLLIN;
 	nfd = 1;
 
+# ifdef FEAT_WAYLAND_CLIPBOARD
+	may_restore_wayland_clipboard();
+	if (vwl_display_active)
+	{
+	    wayland_idx = nfd;
+	    fds[nfd].fd = vwl_display_fd;
+	    fds[nfd].events = POLLIN;
+	    nfd++;
+	}
+#endif
 # ifdef FEAT_XCLIPBOARD
 	may_restore_clipboard();
 	if (xterm_Shell != (Widget)0)
@@ -6598,6 +6612,11 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	    // MzThreads scheduling is required and timeout occurred
 	    finished = FALSE;
 # endif
+
+#ifdef FEAT_WAYLAND_CLIPBOARD
+	if (vwl_display != NULL && (fds[wayland_idx].revents & POLLIN))
+	    vwl_update(TRUE);
+#endif
 
 # ifdef FEAT_XCLIPBOARD
 	if (xterm_Shell != (Widget)0 && (fds[xterm_idx].revents & POLLIN))
@@ -6679,25 +6698,19 @@ select_eintr:
 # endif
 	maxfd = fd;
 
-# ifdef FEAT_WAYLAND
-
-# endif
-
-# ifdef FEAT_WAYLAND
-	if (vwl_display != NULL)
+# ifdef FEAT_WAYLAND_CLIPBOARD
+	may_restore_wayland_clipboard();
+	if (vwl_display_active)
 	{
 	    FD_SET(vwl_display_fd, &rfds);
 
 	    if (maxfd < vwl_display_fd)
 		maxfd = vwl_display_fd;
-
-	    // dispatch anything queued without blocking
-	    wl_display_dispatch_pending(vwl_display);
 	}
 #endif
 
 # ifdef FEAT_XCLIPBOARD
-	may_restore_clipboard();
+	may_restore_x11_clipboard();
 	if (xterm_Shell != (Widget)0)
 	{
 	    FD_SET(ConnectionNumber(xterm_dpy), &rfds);
@@ -6785,11 +6798,9 @@ select_eintr:
 	    finished = FALSE;
 # endif
 
-#ifdef FEAT_WAYLAND
+#ifdef FEAT_WAYLAND_CLIPBOARD
 	if (ret > 0 && vwl_display != NULL && FD_ISSET(vwl_display_fd, &rfds))
-	{
-	    wl_display_dispatch(vwl_display);
-	}
+	    vwl_update(TRUE);
 #endif
 
 # ifdef FEAT_XCLIPBOARD
@@ -8903,11 +8914,22 @@ start_timeout(long msec)
     int
 vwl_flush_requests(void)
 {
+    int ret;
+#ifndef HAVE_SELECT
     struct pollfd fds = {
 	.fd = vwl_display_fd,
 	.events = POLLOUT
     };
-    int ret;
+#else
+    fd_set wfds;
+    struct timeval tv;
+
+    FD_ZERO(&wfds);
+    FD_SET(vwl_display_fd, &wfds);
+
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+#endif
 
     // Send requests to compositor, difference from wl_display_roundtrip
     // is that it doesn't block and does not wait for reponses from the
@@ -8920,12 +8942,22 @@ vwl_flush_requests(void)
 	    && errno == EAGAIN)
     {
 	// Abort after 3 seconds if fd is still not writable
-	if (poll(&fds, 1, 3000) == -1)
+#ifndef HAVE_SELECT
+	if (poll(&fds, 1, 3000) <= 0)
+#else
+	if (select(vwl_display_fd + 1, NULL, &wfds, NULL, &tv) <= 0)
+#endif
+	{
+	    emsg(_(e_wayland_failed_sending_requests));
 	    return FAIL;
+	}
     }
     // return FAIL on error or timeout
     if ((errno != 0 && errno != EAGAIN) || (ret == 0))
+    {
 	return FAIL;
+	emsg(_(e_wayland_failed_sending_requests));
+    }
 
     return OK;
 }
@@ -8939,10 +8971,51 @@ vwl_send_requests(void)
 {
     if (wl_display_roundtrip(vwl_display) == -1)
     {
-	emsg(e_wayland_failed_sending_requests);
+	emsg(_(e_wayland_failed_sending_requests));
 	return FAIL;
     }
     return OK;
+}
+
+/*
+ * Dispatch and send requests that are queued
+ */
+    static void
+vwl_update(int block)
+{
+    if (block)
+    {
+	if (wl_display_dispatch(vwl_display) == -1)
+	    emsg(_(e_wayland_failed_dispatching_requests));
+
+	vwl_send_requests();
+    }
+    else
+    {
+	if (wl_display_dispatch_pending(vwl_display) == -1)
+	    emsg(_(e_wayland_failed_dispatching_requests));
+
+	vwl_flush_requests();
+    }
+}
+
+/*
+ * Return TRUE the wayland display connection is valid.
+ */
+    int
+vwl_display_valid(void)
+{
+    if (wl_display_get_error(vwl_display) != 0)
+    {
+	vwl_display_active = FALSE;
+#ifdef FEAT_WAYLAND_CLIPBOARD
+	vwl_da_active = FALSE;
+#endif
+	emsg(_(e_wayland_display_not_connected));
+	return FALSE;
+    }
+
+    return TRUE;
 }
 
 /*
@@ -8960,7 +9033,7 @@ vwl_setup_client(void)
 
     if (vwl_display == NULL)
     {
-	emsg(e_wayland_display_not_connected);
+	emsg(_(e_wayland_display_not_connected));
 	return;
     }
     vwl_display_fd = wl_display_get_fd(vwl_display);
@@ -8969,7 +9042,7 @@ vwl_setup_client(void)
 
     if (vwl_registry == NULL)
     {
-	emsg(e_wayland_failed_acquiring_object);
+	emsg(_(e_wayland_failed_acquiring_object));
 	goto error;
     }
 
@@ -9005,7 +9078,6 @@ vwl_registry_listener_global(void *data UNUSED,
 	vzwlr_da_manager_v1_name = name;
     }
     else
-#endif
     if (strcmp(interface, wl_seat_interface.name) == 0 &&
 	    version == (uint32_t)wl_seat_interface.version &&
 	    vwl_seat == NULL)
@@ -9014,7 +9086,7 @@ vwl_registry_listener_global(void *data UNUSED,
 		version);
 	vwl_seat_name = name;
     }
-
+#endif
 }
 
 /*
@@ -9024,36 +9096,47 @@ vwl_registry_listener_global(void *data UNUSED,
 vwl_registry_listener_global_remove(void *data UNUSED,
 	struct wl_registry *registry UNUSED, uint32_t name)
 {
+#ifdef FEAT_WAYLAND_CLIPBOARD
     if (name == vwl_seat_name)
     {
 	wl_seat_destroy(vwl_seat);
 	vwl_seat = NULL;
 
-#ifdef FEAT_WAYLAND_CLIPBOARD
-	vzwlr_remove_clipboard();
-#endif
+	vwl_remove_clipboard();
     }
-#ifdef FEAT_WAYLAND_CLIPBOARD
     else if (name == vzwlr_da_manager_v1_name)
-	vzwlr_remove_clipboard();
+	vwl_remove_clipboard();
 #endif
 }
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 
     static void
-vzwlr_remove_clipboard(void)
+may_restore_wayland_clipboard(void)
 {
-    if (vzwlr_da_manager_v1 != NULL)
+    if (!exiting && !v_dying && !vwl_display_valid())
     {
-	zwlr_data_control_manager_v1_destroy(vzwlr_da_manager_v1);
-	vzwlr_da_manager_v1 = NULL;
+	vwl_setup_client();
+	vwl_setup_clipboard();
     }
+}
 
-    if (vzwlr_da_device_v1 != NULL)
+    static void
+vwl_remove_clipboard(void)
+{
+    if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
     {
+	if (vzwlr_da_manager_v1 != NULL)
+	{
+	    zwlr_data_control_manager_v1_destroy(vzwlr_da_manager_v1);
+	    vzwlr_da_manager_v1 = NULL;
+	}
+
+	if (vzwlr_da_device_v1 != NULL)
+	{
 	    zwlr_data_control_device_v1_destroy(vzwlr_da_device_v1);
 	    vzwlr_da_device_v1 = NULL;
+	}
     }
     vwl_da_active = FALSE;
 }
@@ -9061,7 +9144,6 @@ vzwlr_remove_clipboard(void)
 /*
  * Create required objects to allow communication with wayland clipboard.
  * Should be called after wayland client has been setup.
- * TODO: replace verb_msg with emsg()
  */
     void
 vwl_setup_clipboard(void)
@@ -9070,14 +9152,11 @@ vwl_setup_clipboard(void)
 	return;
 
     if (!vwl_display_active)
-    {
-	emsg(e_wayland_display_not_connected);
 	return;
-    }
 
     if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL)
     {
-	emsg(e_wayland_objects_do_not_exist);
+	emsg(_(e_wayland_objects_do_not_exist));
 	return;
     }
 
@@ -9092,7 +9171,7 @@ vwl_setup_clipboard(void)
 
 	if (vzwlr_da_device_v1 == NULL)
 	{
-	    emsg(e_wayland_failed_acquiring_object);
+	    emsg(_(e_wayland_failed_acquiring_object));
 	    return;
 	}
     }
