@@ -2336,7 +2336,7 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
 	total += (size_t)r;
 
 	// Break out of loop if we have read all the data
-	// TODO add option to configure timeout?
+	// TODO: add option to configure timeout?
 #ifndef HAVE_SELECT
 	if (poll(&pfd, 1, 10) <= 0)
 	    break;
@@ -2541,11 +2541,13 @@ vzwlr_da_device_v1_listener_data_offer(void *data,
 }
 
     static void
-vzwlr_da_receive_data(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
-	struct zwlr_data_control_offer_v1 *offer)
+vwl_da_setup_data_receiver(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
+	void *offer, void **cmp_offer, void(*recv_func)(
+	    struct zwlr_data_control_offer_v1 *offer, const char *mime, int fd),
+	void(*destroy_func)(struct zwlr_data_control_offer_v1 *offer))
 {
     if (cbd != cmp_cbd || cbd->cur_mime == NULL || offer == NULL
-	    || offer != cbd->offer.zwlr)
+	    || offer != *cmp_offer)
 	goto exit;
 
     int fds[2];
@@ -2556,8 +2558,7 @@ vzwlr_da_receive_data(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
 	goto exit;
     }
 
-    zwlr_data_control_offer_v1_receive(cbd->offer.zwlr, cbd->cur_mime,
-	    fds[1]);
+    recv_func(*cmp_offer, cbd->cur_mime, fds[1]);
 
     if (vwl_flush_requests() == OK)
 	vwl_da_receive_data(cbd, fds[0]);
@@ -2567,10 +2568,10 @@ vzwlr_da_receive_data(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
     close(fds[0]);
     close(fds[1]);
 exit:
-    if (cbd->offer.zwlr != NULL)
+    if (*cmp_offer != NULL)
     {
-	zwlr_data_control_offer_v1_destroy(cbd->offer.zwlr);
-	cbd->offer.zwlr = NULL;
+	destroy_func(*cmp_offer);
+	*cmp_offer = NULL;
     }
     cbd->cur_mime = NULL;
     cbd->got_selection = TRUE;
@@ -2581,7 +2582,10 @@ vzwlr_da_device_v1_listener_selection(void *data,
 	struct zwlr_data_control_device_v1 *device,
 	struct zwlr_data_control_offer_v1 *offer)
 {
-    vzwlr_da_receive_data(data, &clip_plus, offer);
+    vwl_da_setup_data_receiver(data, &clip_plus, offer,
+	    (void**)&(((Clipboard_T*)data)->offer.zwlr),
+	    zwlr_data_control_offer_v1_receive,
+	    zwlr_data_control_offer_v1_destroy);
 }
 
     static void
@@ -2589,7 +2593,10 @@ vzwlr_da_device_v1_listener_primary_selection(void *data,
 	struct zwlr_data_control_device_v1 *device,
 	struct zwlr_data_control_offer_v1 *offer)
 {
-    vzwlr_da_receive_data(data, &clip_star, offer);
+    vwl_da_setup_data_receiver(data, &clip_star, offer,
+	    (void**)&(((Clipboard_T*)data)->offer.zwlr),
+	    zwlr_data_control_offer_v1_receive,
+	    zwlr_data_control_offer_v1_destroy);
 }
 
     static void

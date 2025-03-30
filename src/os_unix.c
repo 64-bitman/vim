@@ -1327,33 +1327,43 @@ sigcont_handler SIGDEFARG(sigarg)
 }
 #endif
 
-#if defined(FEAT_CLIPBOARD) && defined(FEAT_X11)
-# ifdef USE_SYSTEM
+#if defined(FEAT_CLIPBOARD)
+# if defined(USE_SYSTEM) && defined(FEAT_X11)
 static void *clip_star_save = NULL;
 static void *clip_plus_save = NULL;
 # endif
 
 /*
  * Called when Vim is going to sleep or execute a shell command.
- * We can't respond to requests for the X selections.  Lose them, otherwise
- * other applications will hang.  But first copy the text to cut buffer 0.
+ * We can't respond to requests for the X or wayland selections.
+ * Lose them, otherwise other applications will hang.  But first
+ * copy the text to cut buffer 0 (for X11). Wayland users must have
+ * a clipboard manager to replicate that behaviour.
  */
     static void
 loose_clipboard(void)
 {
     if (clip_star.owned || clip_plus.owned)
     {
+#ifdef FEAT_X11
 	x11_export_final_selection();
+#endif
 	if (clip_star.owned)
 	    clip_lose_selection(&clip_star);
 	if (clip_plus.owned)
 	    clip_lose_selection(&clip_plus);
+#ifdef FEAT_X11
 	if (x11_display != NULL)
 	    XFlush(x11_display);
+#endif
+#ifdef FEAT_WAYLAND
+	if (vwl_display_valid())
+	    vwl_send_requests();
+#endif
     }
 }
 
-# ifdef USE_SYSTEM
+# if defined(USE_SYSTEM) && defined(FEAT_X11)
 /*
  * Save clipboard text to restore later.
  */
@@ -9179,10 +9189,6 @@ vwl_setup_clipboard(void)
     vwl_da_active = TRUE;
 }
 
-#endif
+#endif // FEAT_WAYLAND_CLIPBOARD
 
-/*
- *
- */
-
-#endif
+#endif // FEAT_WAYLAND
