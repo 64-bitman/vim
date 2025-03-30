@@ -3721,7 +3721,7 @@ EXTERN char e_wayland_display_not_connected[]
 EXTERN char e_wayland_objects_do_not_exist[]
 	INIT(= N_("E1542: Required wayland protocol objects do not exist"));
 EXTERN char e_wayland_failed_sending_requests[]
-	INIT(= N_("E1543: Failed sending requests to wayland compositor"));
+	INIT(= N_("E1543: Error sending requests to wayland compositor"));
 EXTERN char e_wayland_failed_acquiring_object[]
 	INIT(= N_("E1544: Failed creating or acquiring wayland protocol object"));
 EXTERN char e_wayland_failed_adding_listener[]

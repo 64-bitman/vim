@@ -74,17 +74,14 @@ static struct zwlr_data_control_source_v1_listener vzwlr_da_source_v1_listener =
     .cancelled = vzwlr_da_source_v1_listener_cancelled
 };
 
-#define MIME_TEXT_UTF8 "text/plain;charset=utf-8"
-#define MIME_TEXT "text/plain"
-
 // Mime types we support sending and receiving
 // Make sure to sync with mime_T enum in vim.h
 // Order matters!
 static const char *supported_mimes[] = {
+    VIMENC_ATOM_NAME,
+    VIM_ATOM_NAME,
     MIME_TEXT_UTF8,
     MIME_TEXT,
-    VIMENC_ATOM_NAME,
-    VIM_ATOM_NAME
 };
 
 #endif
@@ -2302,9 +2299,8 @@ adjust_clip_reg(int *rp)
     static void
 vwl_da_receive_data(Clipboard_T *cbd, int fd)
 {
+    char_u *start, *buf, *tmp, *final, *enc;
     int	motion_type = MAUTO;
-    char_u *buf, *tmp;
-    char_u *start;
     ssize_t r = 0;
     size_t total = 0, max_total = 4096; // initial buffer size if 4096 bytes
     struct pollfd pfd = {
@@ -2326,7 +2322,8 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
 	total += (size_t)r;
 
 	// Break out of loop if we have read all the data
-	if (poll(&pfd, 1, 0) <= 0)
+	// TODO add option to configure timeout?
+	if (poll(&pfd, 1, 10) <= 0)
 	    break;
 
 	// Realloc if we are at the end of the buffer
@@ -2351,7 +2348,44 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
 	vim_free(buf);
 	return;
     }
-    clip_yank_selection(motion_type, buf, (long)total, cbd);
+    final = buf;
+
+    if (STRCMP(cbd->cur_mime, VIM_ATOM_NAME) == 0)
+    {
+	motion_type = *final++;;
+	total--;
+    }
+    else if (STRCMP(cbd->cur_mime, VIMENC_ATOM_NAME) == 0)
+    {
+	vimconv_T conv;
+	int convlen;
+
+	motion_type = *final++;
+	total--;
+
+	// Get encoding of selection
+	enc = final;
+	// Skip the encoding type including null terminator in final text
+	final += STRLEN(final) + 1;
+	// Subtract pointers to get length of encoding;
+	total -= final - enc;
+
+	conv.vc_type = CONV_NONE;
+	convert_setup(&conv, enc, p_enc);
+
+	if (conv.vc_type != CONV_NONE)
+	{
+	    convlen = total;
+	    tmp = string_convert(&conv, final, &convlen);
+	    total = convlen;
+	    if (tmp != NULL)
+		final = tmp;
+	    convert_setup(&conv, NULL, NULL);
+	}
+    }
+
+    smsg("%d", motion_type);
+    clip_yank_selection(motion_type, final, (long)total, cbd);
     vim_free(buf);
 }
 
@@ -2361,7 +2395,8 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
     long_u length;
     char_u *string;
     ssize_t written = 0, total = 0;
-    int motion_type, did_vim = FALSE, did_vimenc = FALSE;
+    int did_vimenc = TRUE;
+    char_u motion_type;
     struct pollfd pfd = {
 	.fd = fd,
 	.events = POLLOUT
@@ -2373,51 +2408,45 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
 	return;
     }
 
-    // TODO: add support for vim and vimenc format types
-    clip_get_selection(cbd);
     motion_type = clip_convert_selection(&string, &length, cbd);
 
     if (motion_type < 0)
 	goto exit;
 
+    if (STRCMP(mime, VIM_ATOM_NAME) == 0 || STRCMP(mime, VIMENC_ATOM_NAME) == 0)
+    {
+	if (poll(&pfd, 1, 3000) > 0)
+	{
+	    written = write(fd, &motion_type, sizeof(motion_type));
+	    if (written == -1)
+		goto exit;
+	}
+    }
+
+    if (STRCMP(mime, VIMENC_ATOM_NAME) == 0)
+	did_vimenc = FALSE;
+
     while (total < length && poll(&pfd, 1, 3000) > 0)
     {
-	written = write(fd, string + total, length - total);
+	if (!did_vimenc)
+	{
+	    if (total == STRLEN(p_enc) + 1)
+	    {
+		total = 0;
+		did_vimenc = TRUE;
+		continue;
+	    }
+	    else
+		// Include null terminator
+		written = write(fd, p_enc + total, STRLEN(p_enc) + 1 - total);
+	}
+	else
+	    written = write(fd, string + total, length - total);
 
 	if (written == -1)
 	    break;
 	total += written;
     }
-
-    /* while (total < length && poll(&pfd, 1, 3000) > 0) */
-    /* { */
-	/* if (!did_vim) */
-	/* { */
-	    /* if (total == sizeof(motion_type)) */
-	    /* { */
-		/* total = 0; */
-		/* did_vim = TRUE; */
-	    /* } */
-	    /* else */
-		/* written = write(fd, &motion_type + total, */
-			/* sizeof(motion_type) - total); */
-	/* } */
-	/* else if (!did_vimenc) */
-	/* { */
-	    /* if (total == STRLEN(p_enc)) */
-	    /* { */
-		/* total = 0; */
-		/* did_vimenc = TRUE; */
-	    /* } */
-	    /* written = write(fd, p_enc + total, STRLEN(p_enc) - 1 - total); */
-	/* } */
-	/* else */
-	    /* written = write(fd, string + total, length - total - 1); */
-
-	/* if (written == -1) */
-	    /* break; */
-	/* total += written; */
-    /* } */
 
 exit:
     vim_free(string);
@@ -2425,24 +2454,37 @@ exit:
 }
 
     static void
-vzwlr_da_offer_v1_listener_offer(void *data,
-	struct zwlr_data_control_offer_v1 *offer, const char *mime_type)
+vwl_choose_offer(Clipboard_T *cbd, void **cbd_offer, void *offer,
+	const char *mime)
 {
-    Clipboard_T *cbd = data;
-
-    if (cbd->offer.zwlr != NULL)
+    if (offer == NULL || cbd->got_selection)
 	return;
 
+    // Mimes with lower indexes in the array are prioritized first
     for (int i = 0; i < sizeof(supported_mimes)/sizeof(*supported_mimes); i++)
-	if (STRCMP(mime_type, supported_mimes[i]) == 0)
-	    goto supported;
+    {
+	const char *m = supported_mimes[i];
 
-    return;
+	if ((cbd->cur_mime == NULL || i < cbd->cur_mime_priority)
+		&& STRCMP(mime, m) == 0)
+	{
+	    cbd->cur_mime = m;
+	    cbd->cur_mime_priority = i;
+	    break;
+	}
+    }
 
-supported:
-	cbd->offer.zwlr = offer;
+    if(*cbd_offer == NULL)
+	*cbd_offer = offer;
+}
 
-	cbd->cur_mime = vim_strsave((char_u*)mime_type);
+    static void
+vzwlr_da_offer_v1_listener_offer(void *data,
+	struct zwlr_data_control_offer_v1 *offer, const char *mime)
+{
+    vwl_choose_offer(data, (void**)(&((Clipboard_T*) data)->offer.zwlr),
+	    offer, mime);
+
 }
 
     static void
@@ -2462,7 +2504,7 @@ vzwlr_da_device_v1_listener_data_offer(void *data,
 vzwlr_da_receive_data(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
 	struct zwlr_data_control_offer_v1 *offer)
 {
-    if (cbd != cmp_cbd || cbd->cur_mime == NULL || offer == NULL 
+    if (cbd != cmp_cbd || cbd->cur_mime == NULL || offer == NULL
 	    || offer != cbd->offer.zwlr)
 	goto exit;
 
@@ -2474,7 +2516,7 @@ vzwlr_da_receive_data(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
 	goto exit;
     }
 
-    zwlr_data_control_offer_v1_receive(cbd->offer.zwlr, (char*)cbd->cur_mime,
+    zwlr_data_control_offer_v1_receive(cbd->offer.zwlr, cbd->cur_mime,
 	    fds[1]);
 
     if (vwl_flush_requests() == OK)
@@ -2490,8 +2532,8 @@ exit:
 	zwlr_data_control_offer_v1_destroy(cbd->offer.zwlr);
 	cbd->offer.zwlr = NULL;
     }
-    vim_free(cbd->cur_mime);
     cbd->cur_mime = NULL;
+    cbd->got_selection = TRUE;
 }
 
     static void
@@ -2523,7 +2565,6 @@ vzwlr_da_device_v1_listener_finished(void *data,
 	zwlr_data_control_offer_v1_destroy(cbd->offer.zwlr);
 	cbd->offer.zwlr = NULL;
     }
-    vim_free(cbd->cur_mime);
     cbd->cur_mime = NULL;
 }
 
@@ -2536,6 +2577,8 @@ clip_wl_request_selection(Clipboard_T *cbd)
 	return;
     }
     void *device;
+
+    cbd->got_selection = FALSE;
 
     if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
     {
@@ -2560,6 +2603,7 @@ clip_wl_request_selection(Clipboard_T *cbd)
 
 	zwlr_data_control_device_v1_destroy(device);
     }
+    vwl_send_requests();
 }
 
 static void vzwlr_da_source_v1_listener_send(void *data,

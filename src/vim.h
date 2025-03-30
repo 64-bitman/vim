@@ -2254,6 +2254,9 @@ typedef int sock_T;
 # define VIM_ATOM_NAME "_VIM_TEXT"
 # define VIMENC_ATOM_NAME "_VIMENC_TEXT"
 
+#define MIME_TEXT_UTF8 "text/plain;charset=utf-8"
+#define MIME_TEXT "text/plain"
+
 // Selection states for modeless selection
 # define SELECT_CLEARED		0
 # define SELECT_IN_PROGRESS	1
@@ -2335,7 +2338,9 @@ typedef struct
     union {
 	struct zwlr_data_control_offer_v1 *zwlr;
     } offer;
-    char_u *cur_mime; // Current mime type for selection
+    const char *cur_mime; // Current mime type for selection
+    int cur_mime_priority; // Priority of mime type compared to others
+    int got_selection; // Received selection
 #endif
 
 # ifdef FEAT_GUI_HAIKU
