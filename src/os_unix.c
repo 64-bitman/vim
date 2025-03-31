@@ -142,7 +142,6 @@ static void vwl_update(int block);
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 #include "wlr-data-control-unstable-v1.h"
-static void may_restore_wayland_clipboard(void);
 static void vwl_remove_clipboard(void);
 #endif
 
@@ -1357,7 +1356,7 @@ loose_clipboard(void)
 	    XFlush(x11_display);
 #endif
 #ifdef FEAT_WAYLAND
-	if (vwl_display_valid())
+	if (vwl_display != NULL)
 	    vwl_send_requests();
 #endif
     }
@@ -6568,8 +6567,7 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	nfd = 1;
 
 # ifdef FEAT_WAYLAND_CLIPBOARD
-	may_restore_wayland_clipboard();
-	if (vwl_display_active)
+	if (vwl_display != NULL)
 	{
 	    wayland_idx = nfd;
 	    fds[nfd].fd = vwl_display_fd;
@@ -6709,8 +6707,7 @@ select_eintr:
 	maxfd = fd;
 
 # ifdef FEAT_WAYLAND_CLIPBOARD
-	may_restore_wayland_clipboard();
-	if (vwl_display_active)
+	if (vwl_display != NULL)
 	{
 	    FD_SET(vwl_display_fd, &rfds);
 
@@ -8940,6 +8937,8 @@ vwl_flush_requests(void)
     tv.tv_sec = 3;
     tv.tv_usec = 0;
 #endif
+    if (vwl_display == NULL)
+	return FAIL;
 
     // Send requests to compositor, difference from wl_display_roundtrip
     // is that it doesn't block and does not wait for reponses from the
@@ -8957,17 +8956,11 @@ vwl_flush_requests(void)
 #else
 	if (select(vwl_display_fd + 1, NULL, &wfds, NULL, &tv) <= 0)
 #endif
-	{
-	    emsg(_(e_wayland_failed_sending_requests));
 	    return FAIL;
-	}
     }
     // return FAIL on error or timeout
     if ((errno != 0 && errno != EAGAIN) || (ret == 0))
-    {
 	return FAIL;
-	emsg(_(e_wayland_failed_sending_requests));
-    }
 
     return OK;
 }
@@ -8979,11 +8972,11 @@ vwl_flush_requests(void)
     int
 vwl_send_requests(void)
 {
-    if (wl_display_roundtrip(vwl_display) == -1)
-    {
-	emsg(_(e_wayland_failed_sending_requests));
+    if (vwl_display == NULL)
 	return FAIL;
-    }
+
+    if (wl_display_roundtrip(vwl_display) == -1)
+	return FAIL;
     return OK;
 }
 
@@ -8993,58 +8986,52 @@ vwl_send_requests(void)
     static void
 vwl_update(int block)
 {
+    if (vwl_display == NULL)
+	return;
+
     if (block)
     {
 	if (wl_display_dispatch(vwl_display) == -1)
-	    emsg(_(e_wayland_failed_dispatching_requests));
+	    return;
 
 	vwl_send_requests();
     }
     else
     {
 	if (wl_display_dispatch_pending(vwl_display) == -1)
-	    emsg(_(e_wayland_failed_dispatching_requests));
 
 	vwl_flush_requests();
     }
 }
 
-/*
- * Return TRUE the wayland display connection is valid.
- */
     int
-vwl_display_valid(void)
+vwl_wayland_available(void)
 {
-    if (wl_display_get_error(vwl_display) != 0)
-    {
-	vwl_display_active = FALSE;
-#ifdef FEAT_WAYLAND_CLIPBOARD
-	vwl_da_active = FALSE;
-#endif
-	emsg(_(e_wayland_display_not_connected));
-	return FALSE;
-    }
-
-    return TRUE;
+    if (getenv("WAYLAND_DISPLAY") != NULL)
+	return TRUE;
+    return FALSE;
 }
 
 /*
  * Connect to wayland display and get its registry, then add a listener
  * so we can bind to the global objects we need.
  */
-    void
+    char *
 vwl_setup_client(void)
 {
-    if (vwl_display_active)
-	return;
+    char *errmsg = NULL;
+
+    if (vwl_display != NULL)
+	return NULL;
 
     // TODO: add option to choose wayland socket?
+    // TODO: add a way to disable libwayland debug messages?
     vwl_display = wl_display_connect(NULL);
 
     if (vwl_display == NULL)
     {
-	emsg(_(e_wayland_display_not_connected));
-	return;
+	errmsg = e_wayland_display_not_connected;
+	goto error;
     }
     vwl_display_fd = wl_display_get_fd(vwl_display);
 
@@ -9052,21 +9039,46 @@ vwl_setup_client(void)
 
     if (vwl_registry == NULL)
     {
-	emsg(_(e_wayland_failed_acquiring_object));
+	errmsg = e_wayland_failed_acquiring_object;
 	goto error;
     }
 
-    wl_registry_add_listener(vwl_registry, &vwl_registry_listener, NULL);
+    if(wl_registry_add_listener(vwl_registry, &vwl_registry_listener, NULL) == -1)
+    {
+	errmsg = e_wayland_failed_adding_listener;
+	goto error;
+    }
 
     if (vwl_send_requests() == FAIL)
+    {
+	errmsg = e_wayland_failed_sending_requests;
 	goto error;
+    }
 
-    vwl_display_active = TRUE;
-    return;
+    return NULL;
 error:
-    wl_display_disconnect(vwl_display);
-    vwl_display = NULL;
-    vwl_display_active = FALSE;
+    vwl_disconnect_client();
+    return errmsg;
+}
+
+    void
+vwl_disconnect_client(void)
+{
+    if (vwl_registry != NULL)
+    {
+	wl_registry_destroy(vwl_registry);
+	vwl_registry = NULL;
+    }
+
+#ifdef FEAT_WAYLAND_CLIPBOARD
+    vwl_remove_clipboard();
+#endif
+
+    if (vwl_display != NULL)
+    {
+	wl_display_disconnect(vwl_display);
+	vwl_display = NULL;
+    }
 }
 
 /*
@@ -9121,15 +9133,6 @@ vwl_registry_listener_global_remove(void *data UNUSED,
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 
-    static void
-may_restore_wayland_clipboard(void)
-{
-    if (!exiting && !v_dying && !vwl_display_valid())
-    {
-	vwl_setup_client();
-	vwl_setup_clipboard();
-    }
-}
 
     static void
 vwl_remove_clipboard(void)
@@ -9147,27 +9150,33 @@ vwl_remove_clipboard(void)
 	    zwlr_data_control_device_v1_destroy(vzwlr_da_device_v1);
 	    vzwlr_da_device_v1 = NULL;
 	}
+
+	if (vwl_seat != NULL)
+	{
+	    wl_seat_destroy(vwl_seat);
+	    vwl_seat = NULL;
+	}
     }
-    vwl_da_active = FALSE;
+    else if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_EXT)
+    {
+    }
+
+    vwl_send_requests();
 }
 
 /*
  * Create required objects to allow communication with wayland clipboard.
  * Should be called after wayland client has been setup.
  */
-    void
+    char *
 vwl_setup_clipboard(void)
 {
-    if (vwl_da_active)
-	return;
-
-    if (!vwl_display_active)
-	return;
+    if (vwl_display == NULL)
+	return e_wayland_display_not_connected;
 
     if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL)
     {
-	emsg(_(e_wayland_objects_do_not_exist));
-	return;
+	return e_wayland_objects_do_not_exist;
     }
 
     // Prioritize ext-data-control over zwlr-data-control
@@ -9181,12 +9190,10 @@ vwl_setup_clipboard(void)
 
 	if (vzwlr_da_device_v1 == NULL)
 	{
-	    emsg(_(e_wayland_failed_acquiring_object));
-	    return;
+	    return e_wayland_failed_acquiring_object;
 	}
     }
-
-    vwl_da_active = TRUE;
+    return NULL;
 }
 
 #endif // FEAT_WAYLAND_CLIPBOARD
