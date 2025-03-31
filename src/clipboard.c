@@ -2529,7 +2529,7 @@ vzwlr_da_offer_v1_listener_offer(void *data,
 
     static void
 vzwlr_da_device_v1_listener_data_offer(void *data,
-	struct zwlr_data_control_device_v1 *device UNUSED,
+	struct zwlr_data_control_device_v1 *device,
 	struct zwlr_data_control_offer_v1 *offer)
 {
     if (offer == NULL)
@@ -2537,7 +2537,7 @@ vzwlr_da_device_v1_listener_data_offer(void *data,
 
     if (zwlr_data_control_offer_v1_add_listener(offer,
 		&vzwlr_da_offer_v1_listener, data) == -1)
-	verb_msg(_("Failed adding listener to wayland offer object"));
+	verb_msg("Failed adding listener to wayland offer object");
 }
 
     static void
@@ -2554,7 +2554,7 @@ vwl_da_setup_data_receiver(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
 
     if (pipe(fds) == -1)
     {
-	verb_msg(_("Failed opening pipe"));
+	verb_msg("Could not open pipe");
 	goto exit;
     }
 
@@ -2563,7 +2563,7 @@ vwl_da_setup_data_receiver(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
     if (vwl_flush_requests() == OK)
 	vwl_da_receive_data(cbd, fds[0]);
     else
-	verb_msg(_("Failed receiving data"));
+	verb_msg("Failed receiving data");
 
     close(fds[0]);
     close(fds[1]);
@@ -2579,7 +2579,7 @@ exit:
 
     static void
 vzwlr_da_device_v1_listener_selection(void *data,
-	struct zwlr_data_control_device_v1 *device UNUSED,
+	struct zwlr_data_control_device_v1 *device,
 	struct zwlr_data_control_offer_v1 *offer)
 {
     vwl_da_setup_data_receiver(data, &clip_plus, offer,
@@ -2590,7 +2590,7 @@ vzwlr_da_device_v1_listener_selection(void *data,
 
     static void
 vzwlr_da_device_v1_listener_primary_selection(void *data,
-	struct zwlr_data_control_device_v1 *device UNUSED,
+	struct zwlr_data_control_device_v1 *device,
 	struct zwlr_data_control_offer_v1 *offer)
 {
     vwl_da_setup_data_receiver(data, &clip_star, offer,
@@ -2618,15 +2618,11 @@ vzwlr_da_device_v1_listener_finished(void *data,
     void
 clip_wl_request_selection(Clipboard_T *cbd)
 {
-    if (vwl_display == NULL || vzwlr_da_manager_v1 == NULL)
+    if (!vwl_da_active)
     {
-	if (vwl_display == NULL)
-	    emsg(_(e_wayland_display_not_connected));
-	else
-	    emsg(_(e_wayland_cb_data_control_unavailable));
+	emsg(_(e_wayland_cb_data_control_unavailable));
 	return;
     }
-
     void *device;
 
     cbd->got_selection = FALSE;
@@ -2658,14 +2654,13 @@ clip_wl_request_selection(Clipboard_T *cbd)
 }
 
 static void vzwlr_da_source_v1_listener_send(void *data,
-	struct zwlr_data_control_source_v1 *source UNUSED,
-	const char *mime, int fd)
+	struct zwlr_data_control_source_v1 *source, const char *mime, int fd)
 {
     vwl_da_send_data(data, fd, mime);
 }
 
 static void vzwlr_da_source_v1_listener_cancelled(void *data,
-	struct zwlr_data_control_source_v1 *source UNUSED)
+	struct zwlr_data_control_source_v1 *source)
 {
     clip_lose_selection(data);
 }
@@ -2677,12 +2672,9 @@ static void vzwlr_da_source_v1_listener_cancelled(void *data,
     int
 clip_wl_own_selection(Clipboard_T *cbd)
 {
-    if (vwl_display == NULL || vzwlr_da_manager_v1 == NULL)
+    if (!vwl_da_active)
     {
-	if (vwl_display == NULL)
-	    emsg(_(e_wayland_display_not_connected));
-	else
-	    emsg(_(e_wayland_cb_data_control_unavailable));
+	emsg(_(e_wayland_cb_data_control_unavailable));
 	return FAIL;
     }
     void *source;

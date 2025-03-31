@@ -648,25 +648,13 @@ vim_main2(void)
 #endif
 
 #ifdef FEAT_WAYLAND
-    if(vwl_wayland_available())
-    {
-	char *errmsg = vwl_setup_client();
-
-	if (errmsg != NULL)
-	    emsg(_(errmsg));
+    vwl_setup_client();
 #ifdef FEAT_WAYLAND_CLIPBOARD
-	else
-	{
-	    errmsg = vwl_setup_clipboard();
-	    if (errmsg != NULL)
-		emsg(_(errmsg));
-	}
-
-	// temporary as of now
-	clip_plus.method = CB_METHOD_WAYLAND;
-	clip_star.method = CB_METHOD_WAYLAND;
+    vwl_setup_clipboard();
+    // temp
+    clip_plus.method = CB_METHOD_WAYLAND;
+    clip_star.method = CB_METHOD_WAYLAND;
 #endif
-    }
 #endif
 
     /*

@@ -2067,6 +2067,8 @@ EXTERN int	p_tgc_set INIT(= FALSE);
 
 // Wayland global variables
 #ifdef FEAT_WAYLAND
+EXTERN int vwl_display_active INIT(= FALSE);
+
 EXTERN struct wl_display *vwl_display;
 EXTERN struct wl_registry *vwl_registry;
 EXTERN struct wl_seat *vwl_seat;
@@ -2074,6 +2076,8 @@ EXTERN uint32_t vwl_seat_name;
 EXTERN int vwl_display_fd;
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
+EXTERN int vwl_da_active INIT(= FALSE);
+
 typedef enum {
     VWL_DA_PROTOCOL_UNKNOWN,
     VWL_DA_PROTOCOL_ZWLR,
