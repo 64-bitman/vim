@@ -94,7 +94,11 @@ volatile sig_atomic_t *start_timeout(long msec);
 void delete_timer(void);
 int vwl_flush_requests(void);
 int vwl_send_requests(void);
+int vwl_dispatch_queue(int block);
 int vwl_display_valid(void);
-void vwl_setup_client(void);
-void vwl_setup_clipboard(void);
+char *vwl_connect_client(void);
+void vwl_disconnect_client(void);
+char *vwl_connect_clipboard(void);
+void vwl_disconnect_clipboard(void);
+int vwl_data_control_valid(void);
 /* vim: set ft=c : */

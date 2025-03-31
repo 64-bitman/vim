@@ -138,12 +138,8 @@ static struct wl_registry_listener vwl_registry_listener = {
     .global_remove = vwl_registry_listener_global_remove
 };
 
-static void vwl_update(int block);
-
 #ifdef FEAT_WAYLAND_CLIPBOARD
 #include "wlr-data-control-unstable-v1.h"
-static void may_restore_wayland_clipboard(void);
-static void vwl_remove_clipboard(void);
 #endif
 
 #endif
@@ -6568,8 +6564,7 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	nfd = 1;
 
 # ifdef FEAT_WAYLAND_CLIPBOARD
-	may_restore_wayland_clipboard();
-	if (vwl_display_active)
+	if (vwl_data_control_valid())
 	{
 	    wayland_idx = nfd;
 	    fds[nfd].fd = vwl_display_fd;
@@ -6625,7 +6620,7 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	if (vwl_display != NULL && (fds[wayland_idx].revents & POLLIN))
-	    vwl_update(TRUE);
+	    vwl_dispatch_queue(TRUE);
 #endif
 
 # ifdef FEAT_XCLIPBOARD
@@ -6709,8 +6704,7 @@ select_eintr:
 	maxfd = fd;
 
 # ifdef FEAT_WAYLAND_CLIPBOARD
-	may_restore_wayland_clipboard();
-	if (vwl_display_active)
+	if (vwl_data_control_valid())
 	{
 	    FD_SET(vwl_display_fd, &rfds);
 
@@ -6810,7 +6804,7 @@ select_eintr:
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	if (ret > 0 && vwl_display != NULL && FD_ISSET(vwl_display_fd, &rfds))
-	    vwl_update(TRUE);
+	    vwl_dispatch_queue(TRUE);
 #endif
 
 # ifdef FEAT_XCLIPBOARD
@@ -8941,6 +8935,9 @@ vwl_flush_requests(void)
     tv.tv_usec = 0;
 #endif
 
+    if (vwl_display == NULL)
+	return FAIL;
+
     // Send requests to compositor, difference from wl_display_roundtrip
     // is that it doesn't block and does not wait for reponses from the
     // compositor (or process events).
@@ -8957,17 +8954,11 @@ vwl_flush_requests(void)
 #else
 	if (select(vwl_display_fd + 1, NULL, &wfds, NULL, &tv) <= 0)
 #endif
-	{
-	    emsg(_(e_wayland_failed_sending_requests));
 	    return FAIL;
-	}
     }
     // return FAIL on error or timeout
     if ((errno != 0 && errno != EAGAIN) || (ret == 0))
-    {
 	return FAIL;
-	emsg(_(e_wayland_failed_sending_requests));
-    }
 
     return OK;
 }
@@ -8979,94 +8970,39 @@ vwl_flush_requests(void)
     int
 vwl_send_requests(void)
 {
-    if (wl_display_roundtrip(vwl_display) == -1)
-    {
-	emsg(_(e_wayland_failed_sending_requests));
+    if (vwl_display == NULL)
 	return FAIL;
-    }
+
+    if (wl_display_roundtrip(vwl_display) == -1)
+	return FAIL;
     return OK;
 }
 
 /*
- * Dispatch and send requests that are queued
+ * Helper function for wl_display_dispatch(_pending)
  */
-    static void
-vwl_update(int block)
+    int
+vwl_dispatch_queue(int block)
 {
+    if (vwl_display == NULL)
+	return FAIL;
+
     if (block)
     {
 	if (wl_display_dispatch(vwl_display) == -1)
-	    emsg(_(e_wayland_failed_dispatching_requests));
-
-	vwl_send_requests();
+	    return FAIL;
     }
     else
     {
 	if (wl_display_dispatch_pending(vwl_display) == -1)
-	    emsg(_(e_wayland_failed_dispatching_requests));
-
-	vwl_flush_requests();
+	    return FAIL;
     }
+    return OK;
 }
 
-/*
- * Return TRUE the wayland display connection is valid.
- */
-    int
-vwl_display_valid(void)
+int vwl_display_valid(void)
 {
-    if (wl_display_get_error(vwl_display) != 0)
-    {
-	vwl_display_active = FALSE;
-#ifdef FEAT_WAYLAND_CLIPBOARD
-	vwl_da_active = FALSE;
-#endif
-	emsg(_(e_wayland_display_not_connected));
-	return FALSE;
-    }
-
-    return TRUE;
-}
-
-/*
- * Connect to wayland display and get its registry, then add a listener
- * so we can bind to the global objects we need.
- */
-    void
-vwl_setup_client(void)
-{
-    if (vwl_display_active)
-	return;
-
-    // TODO: add option to choose wayland socket?
-    vwl_display = wl_display_connect(NULL);
-
-    if (vwl_display == NULL)
-    {
-	emsg(_(e_wayland_display_not_connected));
-	return;
-    }
-    vwl_display_fd = wl_display_get_fd(vwl_display);
-
-    vwl_registry = wl_display_get_registry(vwl_display);
-
-    if (vwl_registry == NULL)
-    {
-	emsg(_(e_wayland_failed_acquiring_object));
-	goto error;
-    }
-
-    wl_registry_add_listener(vwl_registry, &vwl_registry_listener, NULL);
-
-    if (vwl_send_requests() == FAIL)
-	goto error;
-
-    vwl_display_active = TRUE;
-    return;
-error:
-    wl_display_disconnect(vwl_display);
-    vwl_display = NULL;
-    vwl_display_active = FALSE;
+    return vwl_display != NULL;
 }
 
 /*
@@ -9112,27 +9048,113 @@ vwl_registry_listener_global_remove(void *data UNUSED,
 	wl_seat_destroy(vwl_seat);
 	vwl_seat = NULL;
 
-	vwl_remove_clipboard();
+	vwl_disconnect_clipboard();
     }
     else if (name == vzwlr_da_manager_v1_name)
-	vwl_remove_clipboard();
+	vwl_disconnect_clipboard();
 #endif
+}
+
+/*
+ * Connect to wayland display and get its registry, then add a listener
+ * so we can bind to the global objects we need.
+ */
+    char *
+vwl_connect_client(void)
+{
+    char *errmsg = NULL;
+
+    // TODO: add option to choose wayland socket?
+    if (vwl_display == NULL)
+    {
+	vwl_display = wl_display_connect(NULL);
+
+	if (vwl_display == NULL)
+	{
+	    return e_wayland_display_not_connected;
+	}
+	vwl_display_fd = wl_display_get_fd(vwl_display);
+    }
+
+    if (vwl_registry == NULL)
+    {
+	vwl_registry = wl_display_get_registry(vwl_display);
+
+	if (vwl_registry == NULL)
+	{
+	    errmsg = e_wayland_failed_acquiring_object;
+	    goto error;
+	}
+
+	wl_registry_add_listener(vwl_registry, &vwl_registry_listener, NULL);
+    }
+
+    if (vwl_send_requests() == FAIL)
+	goto error;
+
+    return NULL;
+error:
+    vwl_disconnect_client();
+    return errmsg;
+}
+
+    void
+vwl_disconnect_client(void)
+{
+#ifdef FEAT_WAYLAND_CLIPBOARD
+    vwl_disconnect_clipboard();
+#endif
+
+    if (vwl_registry != NULL)
+    {
+	wl_registry_destroy(vwl_registry);
+	vwl_registry = NULL;
+    }
+
+    if (vwl_display != NULL)
+    {
+	wl_display_disconnect(vwl_display);
+	vwl_display = NULL;
+    }
 }
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 
-    static void
-may_restore_wayland_clipboard(void)
+/*
+ * Create required objects to allow communication with wayland clipboard.
+ * Should be called after wayland client has been setup.
+ */
+    char *
+vwl_connect_clipboard(void)
 {
-    if (!exiting && !v_dying && !vwl_display_valid())
+    if (vwl_display == NULL)
+	return e_wayland_display_not_connected;
+
+    if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL)
     {
-	vwl_setup_client();
-	vwl_setup_clipboard();
+	return e_wayland_objects_do_not_exist;
     }
+
+    // Prioritize ext-data-control over zwlr-data-control
+    if (vzwlr_da_manager_v1 != NULL)
+    {
+	vwl_cur_da_protocol = VWL_DA_PROTOCOL_ZWLR;
+
+	if (vzwlr_source_da_device_v1 == NULL)
+	{
+	    vzwlr_source_da_device_v1 =
+		zwlr_data_control_manager_v1_get_data_device(
+			vzwlr_da_manager_v1, vwl_seat);
+
+	    if (vzwlr_source_da_device_v1 == NULL)
+		return e_wayland_failed_acquiring_object;
+	}
+    }
+    return NULL;
 }
 
-    static void
-vwl_remove_clipboard(void)
+    void
+vwl_disconnect_clipboard(void)
 {
     if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
     {
@@ -9142,51 +9164,24 @@ vwl_remove_clipboard(void)
 	    vzwlr_da_manager_v1 = NULL;
 	}
 
-	if (vzwlr_da_device_v1 != NULL)
+	if (vzwlr_source_da_device_v1 != NULL)
 	{
-	    zwlr_data_control_device_v1_destroy(vzwlr_da_device_v1);
-	    vzwlr_da_device_v1 = NULL;
+	    zwlr_data_control_device_v1_destroy(vzwlr_source_da_device_v1);
+	    vzwlr_source_da_device_v1 = NULL;
 	}
     }
-    vwl_da_active = FALSE;
 }
 
-/*
- * Create required objects to allow communication with wayland clipboard.
- * Should be called after wayland client has been setup.
- */
-    void
-vwl_setup_clipboard(void)
+    int
+vwl_data_control_valid(void)
 {
-    if (vwl_da_active)
-	return;
+    if (!vwl_display_valid())
+	return FALSE;
 
-    if (!vwl_display_active)
-	return;
+    if (vzwlr_da_manager_v1 == NULL || vzwlr_source_da_device_v1 == NULL)
+	return FALSE;
 
-    if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL)
-    {
-	emsg(_(e_wayland_objects_do_not_exist));
-	return;
-    }
-
-    // Prioritize ext-data-control over zwlr-data-control
-    if (vzwlr_da_manager_v1 != NULL)
-    {
-	vwl_cur_da_protocol = VWL_DA_PROTOCOL_ZWLR;
-
-	vzwlr_da_device_v1 =
-	    zwlr_data_control_manager_v1_get_data_device(
-		vzwlr_da_manager_v1, vwl_seat);
-
-	if (vzwlr_da_device_v1 == NULL)
-	{
-	    emsg(_(e_wayland_failed_acquiring_object));
-	    return;
-	}
-    }
-
-    vwl_da_active = TRUE;
+    return TRUE;
 }
 
 #endif // FEAT_WAYLAND_CLIPBOARD

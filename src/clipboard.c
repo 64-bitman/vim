@@ -2618,14 +2618,22 @@ vzwlr_da_device_v1_listener_finished(void *data,
     void
 clip_wl_request_selection(Clipboard_T *cbd)
 {
-    if (!vwl_da_active)
+    if (!vwl_display_valid())
     {
-	emsg(_(e_wayland_cb_data_control_unavailable));
+	emsg(_(e_wayland_display_not_connected));
 	return;
     }
     void *device;
+    char *errmsg = vwl_connect_clipboard();
+
+    if (errmsg != NULL)
+    {
+	emsg(_(errmsg));
+	return;
+    }
 
     cbd->got_selection = FALSE;
+
 
     if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
     {
@@ -2672,12 +2680,19 @@ static void vzwlr_da_source_v1_listener_cancelled(void *data,
     int
 clip_wl_own_selection(Clipboard_T *cbd)
 {
-    if (!vwl_da_active)
+    if (!vwl_display_valid())
     {
-	emsg(_(e_wayland_cb_data_control_unavailable));
+	emsg(_(e_wayland_display_not_connected));
 	return FAIL;
     }
     void *source;
+    char *errmsg = vwl_connect_clipboard();
+
+    if (errmsg != NULL)
+    {
+	emsg(_(errmsg));
+	return FAIL;
+    }
 
     // Destroy previous source if it hasn't been destroyed yet
     clip_wl_lose_selection(cbd);
@@ -2717,14 +2732,14 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	}
 
 	if (cbd == &clip_plus)
-	    zwlr_data_control_device_v1_set_selection(vzwlr_da_device_v1,
+	    zwlr_data_control_device_v1_set_selection(vzwlr_source_da_device_v1,
 		    source);
 	else if (cbd == &clip_star)
-	    zwlr_data_control_device_v1_set_primary_selection(vzwlr_da_device_v1,
+	    zwlr_data_control_device_v1_set_primary_selection(vzwlr_source_da_device_v1,
 		    source);
     }
 
-    wl_display_dispatch(vwl_display);
+    vwl_dispatch_queue(TRUE);
     return OK;
 }
 
