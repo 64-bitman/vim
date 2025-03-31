@@ -2282,13 +2282,6 @@ typedef enum {
 
 #endif
 
-// Methods for accessing the clipboard
-typedef enum {
-    CB_METHOD_UNKNOWN,
-    CB_METHOD_X11,
-    CB_METHOD_WAYLAND
-} cb_method_T;
-
 // Info about selected text
 typedef struct
 {
@@ -2297,7 +2290,6 @@ typedef struct
     pos_T	start;		// Start of selected area
     pos_T	end;		// End of selected area
     int		vmode;		// Visual mode character
-    cb_method_T method;         // Method we are using to access clipboard
 
     // Fields for selection that doesn't use Visual mode
     short_u	origin_row;

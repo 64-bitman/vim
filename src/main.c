@@ -649,11 +649,6 @@ vim_main2(void)
 
 #ifdef FEAT_WAYLAND
     vwl_connect_client();
-#ifdef FEAT_WAYLAND_CLIPBOARD
-    // Temporary for now
-    clip_plus.method = CB_METHOD_WAYLAND;
-    clip_star.method = CB_METHOD_WAYLAND;
-#endif
 #endif
 
     /*

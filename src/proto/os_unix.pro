@@ -95,10 +95,11 @@ void delete_timer(void);
 int vwl_flush_requests(void);
 int vwl_send_requests(void);
 int vwl_dispatch_queue(int block);
-int vwl_display_valid(void);
-char *vwl_connect_client(void);
+int vwl_still_connected(void);
+int vwl_may_restore_connection(int reset);
+int vwl_connect_client(void);
 void vwl_disconnect_client(void);
-char *vwl_connect_clipboard(void);
+int vwl_connect_clipboard(void);
 void vwl_disconnect_clipboard(void);
 int vwl_data_control_valid(void);
 /* vim: set ft=c : */

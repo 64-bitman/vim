@@ -111,8 +111,6 @@ clip_init(int can_use)
 	cb->end.lnum   = 0;
 	cb->end.col    = 0;
 	cb->state      = SELECT_CLEARED;
-	cb->method     = CB_METHOD_X11; // Default to X11, we will set to
-	                                // wayland if we are able to connect.
 
 	if (cb == &clip_plus)
 	    break;
@@ -2618,22 +2616,13 @@ vzwlr_da_device_v1_listener_finished(void *data,
     void
 clip_wl_request_selection(Clipboard_T *cbd)
 {
-    if (!vwl_display_valid())
-    {
-	emsg(_(e_wayland_display_not_connected));
-	return;
-    }
     void *device;
-    char *errmsg = vwl_connect_clipboard();
-
-    if (errmsg != NULL)
+    if (vwl_connect_clipboard() == FAIL)
     {
-	emsg(_(errmsg));
+	emsg(_(e_wayland_clipboard_unavailable));
 	return;
     }
-
     cbd->got_selection = FALSE;
-
 
     if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
     {
@@ -2641,20 +2630,17 @@ clip_wl_request_selection(Clipboard_T *cbd)
 		vzwlr_da_manager_v1, vwl_seat);
 
 	if (device == NULL)
-	{
-	    emsg(_(e_wayland_failed_acquiring_object));
 	    return;
-	}
 
 	if (zwlr_data_control_device_v1_add_listener(device,
 		&vzwlr_da_device_v1_listener, cbd) == -1)
 	{
 	    zwlr_data_control_device_v1_destroy(device);
-	    emsg(_(e_wayland_failed_adding_listener));
 	    return;
 	}
 
-	vwl_send_requests();
+	if (vwl_send_requests() == FAIL)
+	    emsg(_(e_wayland_failed_sending_requests));
 
 	zwlr_data_control_device_v1_destroy(device);
     }
@@ -2680,17 +2666,11 @@ static void vzwlr_da_source_v1_listener_cancelled(void *data,
     int
 clip_wl_own_selection(Clipboard_T *cbd)
 {
-    if (!vwl_display_valid())
-    {
-	emsg(_(e_wayland_display_not_connected));
-	return FAIL;
-    }
     void *source;
-    char *errmsg = vwl_connect_clipboard();
 
-    if (errmsg != NULL)
+    if (vwl_connect_clipboard() == FAIL)
     {
-	emsg(_(errmsg));
+	emsg(_(e_wayland_clipboard_unavailable));
 	return FAIL;
     }
 
@@ -2709,15 +2689,11 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	cbd->source.zwlr = source;
 
 	if (source == NULL)
-	{
-	    emsg(_(e_wayland_failed_acquiring_object));
 	    return FAIL;
-	}
 
 	if (zwlr_data_control_source_v1_add_listener(source,
 		    &vzwlr_da_source_v1_listener, cbd) == -1)
 	{
-	    emsg(_(e_wayland_failed_adding_listener));
 	    zwlr_data_control_source_v1_destroy(source);
 	    return FAIL;
 	}
@@ -2739,7 +2715,17 @@ clip_wl_own_selection(Clipboard_T *cbd)
 		    source);
     }
 
-    vwl_dispatch_queue(TRUE);
+    if (vwl_flush_requests() == FAIL || vwl_dispatch_queue(FALSE) == FAIL)
+    {
+	emsg(_(e_wayland_failed_dispatching_requests));
+
+	if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+	{
+	    zwlr_data_control_source_v1_destroy(source);
+	    cbd->source.zwlr = NULL;
+	}
+    }
+
     return OK;
 }
 
@@ -2754,6 +2740,7 @@ clip_wl_lose_selection(Clipboard_T *cbd)
 	    cbd->source.zwlr = NULL;
 	}
     }
+    vwl_send_requests();
 }
 
 

@@ -2072,6 +2072,7 @@ EXTERN struct wl_registry *vwl_registry;
 EXTERN struct wl_seat *vwl_seat;
 EXTERN uint32_t vwl_seat_name;
 EXTERN int vwl_display_fd;
+EXTERN int vwl_connection_restore_tries;
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 typedef enum {

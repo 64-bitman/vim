@@ -1352,10 +1352,6 @@ loose_clipboard(void)
 	if (x11_display != NULL)
 	    XFlush(x11_display);
 #endif
-#ifdef FEAT_WAYLAND
-	if (vwl_display_valid())
-	    vwl_send_requests();
-#endif
     }
 }
 
@@ -6564,6 +6560,7 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	nfd = 1;
 
 # ifdef FEAT_WAYLAND_CLIPBOARD
+	vwl_may_restore_connection(FALSE);
 	if (vwl_data_control_valid())
 	{
 	    wayland_idx = nfd;
@@ -6619,7 +6616,7 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 # endif
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
-	if (vwl_display != NULL && (fds[wayland_idx].revents & POLLIN))
+	if (vwl_data_control_valid() && (fds[wayland_idx].revents & POLLIN))
 	    vwl_dispatch_queue(TRUE);
 #endif
 
@@ -6704,6 +6701,7 @@ select_eintr:
 	maxfd = fd;
 
 # ifdef FEAT_WAYLAND_CLIPBOARD
+	vwl_may_restore_connection(FALSE);
 	if (vwl_data_control_valid())
 	{
 	    FD_SET(vwl_display_fd, &rfds);
@@ -6803,7 +6801,10 @@ select_eintr:
 # endif
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
-	if (ret > 0 && vwl_display != NULL && FD_ISSET(vwl_display_fd, &rfds))
+	if (ret > 0 && vwl_data_control_valid() && FD_ISSET(vwl_display_fd, &rfds))
+	    // This causes a very small memory leak wl_display_dispatch is called
+	    // and then the connection is lost. Seems like an internal thing,
+	    // not sure.
 	    vwl_dispatch_queue(TRUE);
 #endif
 
@@ -9000,9 +9001,38 @@ vwl_dispatch_queue(int block)
     return OK;
 }
 
-int vwl_display_valid(void)
+    int
+vwl_still_connected(void)
 {
-    return vwl_display != NULL;
+    if (vwl_display == NULL)
+	return FALSE;
+
+    if (wl_display_get_error(vwl_display) != 0)
+	return FALSE;
+
+    return TRUE;
+}
+
+    int
+vwl_may_restore_connection(int reset)
+{
+    if (reset)
+	vwl_connection_restore_tries = 0;
+
+    if (!exiting && !v_dying && vwl_connection_restore_tries < 5)
+    {
+	if (!vwl_still_connected())
+	{
+	    vwl_disconnect_client();
+	    if (vwl_connect_client() == OK)
+		return OK;
+	    vwl_connection_restore_tries++;
+	    return FAIL;
+	}
+	return OK;
+    }
+
+    return FAIL;
 }
 
 /*
@@ -9024,6 +9054,7 @@ vwl_registry_listener_global(void *data UNUSED,
 	vzwlr_da_manager_v1_name = name;
     }
     else
+#endif
     if (strcmp(interface, wl_seat_interface.name) == 0 &&
 	    version == (uint32_t)wl_seat_interface.version &&
 	    vwl_seat == NULL)
@@ -9032,7 +9063,6 @@ vwl_registry_listener_global(void *data UNUSED,
 		version);
 	vwl_seat_name = name;
     }
-#endif
 }
 
 /*
@@ -9042,14 +9072,16 @@ vwl_registry_listener_global(void *data UNUSED,
 vwl_registry_listener_global_remove(void *data UNUSED,
 	struct wl_registry *registry UNUSED, uint32_t name)
 {
-#ifdef FEAT_WAYLAND_CLIPBOARD
     if (name == vwl_seat_name)
     {
 	wl_seat_destroy(vwl_seat);
 	vwl_seat = NULL;
 
+#ifdef FEAT_WAYLAND_CLIPBOARD
 	vwl_disconnect_clipboard();
+#endif
     }
+#ifdef FEAT_WAYLAND_CLIPBOARD
     else if (name == vzwlr_da_manager_v1_name)
 	vwl_disconnect_clipboard();
 #endif
@@ -9059,20 +9091,16 @@ vwl_registry_listener_global_remove(void *data UNUSED,
  * Connect to wayland display and get its registry, then add a listener
  * so we can bind to the global objects we need.
  */
-    char *
+    int
 vwl_connect_client(void)
 {
-    char *errmsg = NULL;
-
-    // TODO: add option to choose wayland socket?
     if (vwl_display == NULL)
     {
+	// TODO: add option to choose wayland socket?
 	vwl_display = wl_display_connect(NULL);
 
 	if (vwl_display == NULL)
-	{
-	    return e_wayland_display_not_connected;
-	}
+	    goto error;
 	vwl_display_fd = wl_display_get_fd(vwl_display);
     }
 
@@ -9081,21 +9109,19 @@ vwl_connect_client(void)
 	vwl_registry = wl_display_get_registry(vwl_display);
 
 	if (vwl_registry == NULL)
-	{
-	    errmsg = e_wayland_failed_acquiring_object;
 	    goto error;
-	}
-
-	wl_registry_add_listener(vwl_registry, &vwl_registry_listener, NULL);
+	if (wl_registry_add_listener(vwl_registry, &vwl_registry_listener, NULL)
+		== -1)
+	    goto error;
     }
 
     if (vwl_send_requests() == FAIL)
 	goto error;
 
-    return NULL;
+    return OK;
 error:
     vwl_disconnect_client();
-    return errmsg;
+    return FAIL;
 }
 
     void
@@ -9104,6 +9130,11 @@ vwl_disconnect_client(void)
 #ifdef FEAT_WAYLAND_CLIPBOARD
     vwl_disconnect_clipboard();
 #endif
+    if (vwl_seat != NULL)
+    {
+	wl_seat_destroy(vwl_seat);
+	vwl_seat = NULL;
+    }
 
     if (vwl_registry != NULL)
     {
@@ -9124,16 +9155,13 @@ vwl_disconnect_client(void)
  * Create required objects to allow communication with wayland clipboard.
  * Should be called after wayland client has been setup.
  */
-    char *
+    int
 vwl_connect_clipboard(void)
 {
-    if (vwl_display == NULL)
-	return e_wayland_display_not_connected;
-
+    if (vwl_may_restore_connection(TRUE) == FAIL)
+	return FAIL;
     if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL)
-    {
-	return e_wayland_objects_do_not_exist;
-    }
+	return FAIL;
 
     // Prioritize ext-data-control over zwlr-data-control
     if (vzwlr_da_manager_v1 != NULL)
@@ -9147,10 +9175,11 @@ vwl_connect_clipboard(void)
 			vzwlr_da_manager_v1, vwl_seat);
 
 	    if (vzwlr_source_da_device_v1 == NULL)
-		return e_wayland_failed_acquiring_object;
+		return FAIL;
 	}
+	return OK;
     }
-    return NULL;
+    return FAIL;
 }
 
     void
@@ -9170,12 +9199,18 @@ vwl_disconnect_clipboard(void)
 	    vzwlr_source_da_device_v1 = NULL;
 	}
     }
+    if (clip_star.owned)
+	clip_lose_selection(&clip_star);
+    if (clip_plus.owned)
+	clip_lose_selection(&clip_plus);
+
+    vwl_send_requests();
 }
 
     int
 vwl_data_control_valid(void)
 {
-    if (!vwl_display_valid())
+    if (!vwl_still_connected())
 	return FALSE;
 
     if (vzwlr_da_manager_v1 == NULL || vzwlr_source_da_device_v1 == NULL)
