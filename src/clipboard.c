@@ -2729,6 +2729,9 @@ clip_wl_own_selection(Clipboard_T *cbd)
     return OK;
 }
 
+/*
+ *
+ */
     void
 clip_wl_lose_selection(Clipboard_T *cbd)
 {

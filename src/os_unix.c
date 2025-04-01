@@ -8985,26 +8985,33 @@ vwl_dispatch_queue(void)
     if (vwl_display == NULL || vwl_flush_requests() == FAIL)
 	return FAIL;
 
-    // This causes a very small memory leak wl_display_dispatch is called
-    // and then the connection is lost. Seems like an internal thing, not sure.
+    // When wl_display_dispatch is called successfully and then the
+    // connection to the compositor is lost, leak sanitizer reports a very
+    // tiny memory leak coming from the wl_display_dispatch function. Not
+    // sure if this is a false positive or just a bug with libwayland.
+    // "Fix" seems to be to keep all the old display objects alive, and
+    // have them referenced somehow, but that itself would be an even
+    // bigger memory leak indirectly.
     if (wl_display_dispatch(vwl_display) == -1)
 	return FAIL;
 
     return OK;
 }
 
+/*
+ *
+ */
     int
 vwl_still_connected(void)
 {
-    if (vwl_display == NULL)
+    if (vwl_display == NULL || wl_display_get_error(vwl_display) != 0)
 	return FALSE;
-
-    if (wl_display_get_error(vwl_display) != 0)
-	return FALSE;
-
     return TRUE;
 }
 
+/*
+ *
+ */
     int
 vwl_may_restore_connection(int reset)
 {
@@ -9116,6 +9123,9 @@ error:
     return FAIL;
 }
 
+/*
+ *
+ */
     void
 vwl_disconnect_client(void)
 {
@@ -9144,8 +9154,7 @@ vwl_disconnect_client(void)
 #ifdef FEAT_WAYLAND_CLIPBOARD
 
 /*
- * Create required objects to allow communication with wayland clipboard.
- * Should be called after wayland client has been setup.
+ *
  */
     int
 vwl_connect_clipboard(void)
@@ -9168,12 +9177,23 @@ vwl_connect_clipboard(void)
 
 	    if (vzwlr_source_da_device_v1 == NULL)
 		return FAIL;
+
+	    if (vwl_send_requests() == FAIL)
+	    {
+		zwlr_data_control_device_v1_destroy(vzwlr_source_da_device_v1);
+		vzwlr_source_da_device_v1 = NULL;
+		return FAIL;
+	    }
 	}
 	return OK;
     }
     return FAIL;
 }
 
+/*
+ * Note: destroys the manager, so only way to get back data control is to
+ * reconnect display.
+ */
     void
 vwl_disconnect_clipboard(void)
 {
@@ -9191,21 +9211,25 @@ vwl_disconnect_clipboard(void)
 	    vzwlr_source_da_device_v1 = NULL;
 	}
     }
+    vwl_send_requests();
+
     if (clip_star.owned)
 	clip_lose_selection(&clip_star);
     if (clip_plus.owned)
 	clip_lose_selection(&clip_plus);
-
-    vwl_send_requests();
 }
 
+/*
+ *
+ */
     int
 vwl_data_control_valid(void)
 {
     if (!vwl_still_connected())
 	return FALSE;
 
-    if (vzwlr_da_manager_v1 == NULL || vzwlr_source_da_device_v1 == NULL)
+    if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL
+	    || vzwlr_source_da_device_v1 == NULL)
 	return FALSE;
 
     return TRUE;
