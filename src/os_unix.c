@@ -9004,7 +9004,10 @@ vwl_dispatch_queue(void)
     int
 vwl_still_connected(void)
 {
-    if (vwl_display == NULL || wl_display_get_error(vwl_display) != 0)
+    if (vwl_display == NULL)
+	return FALSE;
+    if (wl_display_get_error(vwl_display) == -1 ||
+	    vwl_flush_requests() == FAIL)
 	return FALSE;
     return TRUE;
 }

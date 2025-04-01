@@ -2711,8 +2711,8 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	    zwlr_data_control_device_v1_set_selection(vzwlr_source_da_device_v1,
 		    source);
 	else if (cbd == &clip_star)
-	    zwlr_data_control_device_v1_set_primary_selection(vzwlr_source_da_device_v1,
-		    source);
+	    zwlr_data_control_device_v1_set_primary_selection(
+		    vzwlr_source_da_device_v1, source);
     }
 
     if (vwl_dispatch_queue() == FAIL)
