@@ -6802,10 +6802,7 @@ select_eintr:
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	if (ret > 0 && vwl_data_control_valid() && FD_ISSET(vwl_display_fd, &rfds))
-	    // This causes a very small memory leak wl_display_dispatch is called
-	    // and then the connection is lost. Seems like an internal thing,
-	    // not sure.
-	    vwl_dispatch_queue(TRUE);
+	    vwl_dispatch_queue();
 #endif
 
 # ifdef FEAT_XCLIPBOARD
@@ -8958,7 +8955,7 @@ vwl_flush_requests(void)
 	    return FAIL;
     }
     // return FAIL on error or timeout
-    if ((errno != 0 && errno != EAGAIN) || (ret == 0))
+    if ((errno != 0 && errno != EAGAIN) || ret == -1)
 	return FAIL;
 
     return OK;
@@ -8980,24 +8977,19 @@ vwl_send_requests(void)
 }
 
 /*
- * Helper function for wl_display_dispatch(_pending)
+ * Helper function for wl_display_dispatch
  */
     int
-vwl_dispatch_queue(int block)
+vwl_dispatch_queue(void)
 {
-    if (vwl_display == NULL)
+    if (vwl_display == NULL || vwl_flush_requests() == FAIL)
 	return FAIL;
 
-    if (block)
-    {
-	if (wl_display_dispatch(vwl_display) == -1)
-	    return FAIL;
-    }
-    else
-    {
-	if (wl_display_dispatch_pending(vwl_display) == -1)
-	    return FAIL;
-    }
+    // This causes a very small memory leak wl_display_dispatch is called
+    // and then the connection is lost. Seems like an internal thing, not sure.
+    if (wl_display_dispatch(vwl_display) == -1)
+	return FAIL;
+
     return OK;
 }
 

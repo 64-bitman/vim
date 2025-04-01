@@ -94,7 +94,7 @@ volatile sig_atomic_t *start_timeout(long msec);
 void delete_timer(void);
 int vwl_flush_requests(void);
 int vwl_send_requests(void);
-int vwl_dispatch_queue(int block);
+int vwl_dispatch_queue(void);
 int vwl_still_connected(void);
 int vwl_may_restore_connection(int reset);
 int vwl_connect_client(void);

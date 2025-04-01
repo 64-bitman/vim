@@ -2715,7 +2715,7 @@ clip_wl_own_selection(Clipboard_T *cbd)
 		    source);
     }
 
-    if (vwl_flush_requests() == FAIL || vwl_dispatch_queue(FALSE) == FAIL)
+    if (vwl_dispatch_queue() == FAIL)
     {
 	emsg(_(e_wayland_failed_dispatching_requests));
 
