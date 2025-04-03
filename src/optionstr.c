@@ -39,6 +39,8 @@ static char *(p_ff_values[]) = {FF_UNIX, FF_DOS, FF_MAC, NULL};
 #ifdef FEAT_CLIPBOARD
 // Note: Keep this in sync with did_set_clipboard()
 static char *(p_cb_values[]) = {"unnamed", "unnamedplus", "autoselect", "autoselectplus", "autoselectml", "html", "exclude:", NULL};
+// Note: keep this in sync with get_clipmethod()
+static char *(p_cpm_values[]) = {"gui", "wayland", "x11", NULL};
 #endif
 #ifdef FEAT_CRYPT
 static char *(p_cm_values[]) = {"zip", "blowfish", "blowfish2",
@@ -1377,6 +1379,32 @@ expand_set_clipboard(optexpand_T *args, int *numMatches, char_u ***matches)
 	    numMatches,
 	    matches);
 }
+
+/*
+ * The 'keyprotocol' option is changed.
+ */
+    char *
+did_set_clipmethod(optset_T *args UNUSED)
+{
+    clipmethod_T method = get_clipmethod();
+
+    if (method == CLIPMETHOD_FAIL)
+	return e_invalid_argument;
+
+    return NULL;
+}
+
+    int
+expand_set_clipmethod(optexpand_T *args, int *numMatches, char_u ***matches)
+{
+    return expand_set_opt_string(
+	    args,
+	    p_cpm_values,
+	    ARRAY_LENGTH(p_cpm_values) - 1,
+	    numMatches,
+	    matches);
+}
+
 #endif
 
 /*

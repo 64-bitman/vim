@@ -2282,6 +2282,14 @@ typedef enum {
 
 #endif
 
+typedef enum {
+    CLIPMETHOD_FAIL,
+    CLIPMETHOD_NONE,
+    CLIPMETHOD_GUI,
+    CLIPMETHOD_WAYLAND,
+    CLIPMETHOD_X11
+} clipmethod_T;
+
 // Info about selected text
 typedef struct
 {

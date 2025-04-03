@@ -607,6 +607,10 @@ static struct vimoption options[] =
 			    {(char_u *)"", (char_u *)0L}
 #endif
 			    SCTX_INIT},
+    {"clipmethod", "cpm",   P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
+			    (char_u *)&p_cpm, PV_NONE, did_set_clipmethod, expand_set_clipmethod,
+			    {(char_u *)"gui,wayland,x11", (char_u *)0L}
+			    SCTX_INIT},
     {"cmdheight",   "ch",   P_NUM|P_VI_DEF|P_RALL,
 			    (char_u *)&p_ch, PV_NONE, did_set_cmdheight, NULL,
 			    {(char_u *)1L, (char_u *)0L} SCTX_INIT},
