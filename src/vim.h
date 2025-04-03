@@ -2279,7 +2279,6 @@ typedef enum {
     VWL_DA_SELECTION_CLIPBOARD,
     VWL_DA_SELECTION_PRIMARY,
 } vwl_da_selection_T;
-
 #endif
 
 typedef enum {

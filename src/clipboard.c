@@ -228,7 +228,7 @@ clip_own_selection(Clipboard_T *cbd)
     static void
 clip_gen_lose_selection(Clipboard_T *cbd)
 {
-    clipmethod_T method = get_clipmethod();
+    clipmethod_T method = (clip_is_losing) ? prev_clipmethod : get_clipmethod();
 
     if (method == CLIPMETHOD_GUI)
     {
@@ -2825,6 +2825,8 @@ get_clipmethod(void)
 
     while (*p != NUL)
     {
+	clipmethod_T method = CLIPMETHOD_NONE;
+
 	// Isolate one comma separated item.
 	(void)copy_option_part(&p, buf, len, ",");
 
@@ -2832,34 +2834,45 @@ get_clipmethod(void)
 	{
 #ifdef FEAT_GUI
 	    if (gui.in_use)
-	    {
-		ret = CLIPMETHOD_GUI;
-		goto theend;
-	    }
+		method = CLIPMETHOD_GUI;
 #endif
 	}
 	else if (STRCMP(buf, "wayland") == 0)
 	{
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	    if (vwl_display != NULL)
-	    {
-		ret = CLIPMETHOD_WAYLAND;
-		goto theend;
-	    }
+		method = CLIPMETHOD_WAYLAND;
 #endif
 	}
 	else if (STRCMP(buf, "x11") == 0)
 	{
 #ifdef FEAT_XCLIPBOARD
 	    if (xterm_dpy != NULL)
-	    {
-		ret = CLIPMETHOD_X11;
-		goto theend;
-	    }
+		method = CLIPMETHOD_X11;
 #endif
 	}
 	else
 	    goto theend;
+
+	if (method != CLIPMETHOD_NONE)
+	{
+	    // Make sure to lose any selectins if we are switching to a new method.
+	    if (prev_clipmethod != CLIPMETHOD_NONE && prev_clipmethod != method)
+	    {
+		// Set this to TRUE so that we don't call get_clipmethod twice
+		// and actually lose the selection using the new clipmethod instead
+		// of the old one which we want.
+		clip_is_losing = TRUE;
+		if (clip_star.owned)
+		    clip_lose_selection(&clip_star);
+		if (clip_plus.owned)
+		    clip_lose_selection(&clip_plus);
+		clip_is_losing = FALSE;
+	    }
+
+	    ret = prev_clipmethod = method;
+	    goto theend;
+	}
     }
 
     // No match found, use "none".

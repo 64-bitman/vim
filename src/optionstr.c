@@ -1381,11 +1381,13 @@ expand_set_clipboard(optexpand_T *args, int *numMatches, char_u ***matches)
 }
 
 /*
- * The 'keyprotocol' option is changed.
+ * The 'clipmethod' option is changed.
  */
     char *
 did_set_clipmethod(optset_T *args UNUSED)
 {
+    // Call get_clipmethod to check if option value is valid and lose selection
+    // if previous clipmethod is different from new one
     clipmethod_T method = get_clipmethod();
 
     if (method == CLIPMETHOD_FAIL)
