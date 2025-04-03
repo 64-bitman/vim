@@ -764,7 +764,7 @@ oc_typval2type(typval_T *tv)
     if (tv->vval.v_object != NULL)
 	return &tv->vval.v_object->obj_class->class_object_type;
 
-    return &t_object;
+    return &t_object_any;
 }
 
 /*
@@ -1307,8 +1307,11 @@ check_type_maybe(
 		return MAYBE;	// use runtime type check
 	    if (actual->tt_type != VAR_OBJECT)
 		return FAIL;	// don't use tt_class
-	    if (actual->tt_class == NULL)
-		return OK;	// A null object matches
+	    if (actual->tt_class == NULL)    // null object
+		return OK;
+	    // t_object_any matches any object except for an enum item
+	    if (expected == &t_object_any && !IS_ENUM(actual->tt_class))
+		return OK;
 
 	    // For object method arguments, do a invariant type check in
 	    // an extended class.  For all others, do a covariance type check.
@@ -1782,6 +1785,63 @@ on_err:
 }
 
 /*
+ * Parse a "object" type at "*arg" and advance over it.
+ * When "give_error" is TRUE give error messages, otherwise be quiet.
+ * Return NULL for failure.
+ */
+    static type_T *
+parse_type_object(char_u **arg, garray_T *type_gap, int give_error)
+{
+    char_u	*arg_start = *arg;
+    type_T	*object_type;
+    int		prev_called_emsg = called_emsg;
+
+    // object<X> or object<any>
+    if (**arg != '<')
+    {
+	if (give_error)
+	{
+	    if (*skipwhite(*arg) == '<')
+		semsg(_(e_no_white_space_allowed_before_str_str), "<", *arg);
+	    else
+		semsg(_(e_missing_type_after_str), "object");
+	}
+
+	// only "object" is specified
+	return NULL;
+    }
+
+    // skip spaces following "object<"
+    *arg = skipwhite(*arg + 1);
+
+    object_type = parse_type(arg, type_gap, give_error);
+    if (object_type == NULL)
+	return NULL;
+
+    *arg = skipwhite(*arg);
+    if (**arg != '>' && called_emsg == prev_called_emsg)
+    {
+	if (give_error)
+	    semsg(_(e_missing_gt_after_type_str), arg_start);
+	return NULL;
+    }
+    ++*arg;
+
+    if (object_type->tt_type == VAR_ANY)
+	return &t_object_any;
+
+    if (object_type->tt_type != VAR_OBJECT)
+    {
+	// specified type is not a class
+	if (give_error)
+	    semsg(_(e_class_name_not_found_str), arg_start);
+	return NULL;
+    }
+
+    return object_type;
+}
+
+/*
  * Parse a user defined type at "*arg" and advance over it.
  * It can be a class or an interface or a typealias name, possibly imported.
  * Return NULL if a type is not found.
@@ -1929,6 +1989,13 @@ parse_type(char_u **arg, garray_T *type_gap, int give_error)
 		return &t_number;
 	    }
 	    break;
+	case 'o':
+	    if (len == 6 && STRNCMP(*arg, "object", len) == 0)
+	    {
+		*arg += len;
+		return parse_type_object(arg, type_gap, give_error);
+	    }
+	    break;
 	case 's':
 	    if (len == 6 && STRNCMP(*arg, "string", len) == 0)
 	    {
@@ -1984,10 +2051,12 @@ equal_type(type_T *type1, type_T *type2, int flags)
 	case VAR_JOB:
 	case VAR_CHANNEL:
 	case VAR_INSTR:
-	case VAR_CLASS:
-	case VAR_OBJECT:
 	case VAR_TYPEALIAS:
 	    break;  // not composite is always OK
+	case VAR_OBJECT:
+	case VAR_CLASS:
+	    // Objects are considered equal if they are from the same class
+	    return type1->tt_class == type2->tt_class;
 	case VAR_LIST:
 	case VAR_DICT:
 	    return equal_type(type1->tt_member, type2->tt_member, flags);
@@ -2118,6 +2187,11 @@ common_type(type_T *type1, type_T *type2, type_T **dest, garray_T *type_gap)
 	else if (type1->tt_type == VAR_FUNC)
 	{
 	    common_type_var_func(type1, type2, dest, type_gap);
+	    return;
+	}
+	else if (type1->tt_type == VAR_OBJECT)
+	{
+	    *dest = &t_object_any;
 	    return;
 	}
     }
@@ -2426,7 +2500,7 @@ type_name_class_or_obj(char *name, type_T *type, char **tofree)
 	    name = "enum";
     }
     else
-	class_name = (char_u *)"Unknown";
+	class_name = (char_u *)"any";
 
     size_t len = STRLEN(name) + STRLEN(class_name) + 3;
     *tofree = alloc(len);
