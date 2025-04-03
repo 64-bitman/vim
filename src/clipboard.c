@@ -2495,7 +2495,7 @@ exit:
 vwl_choose_offer(Clipboard_T *cbd, void **cbd_offer, void *offer,
 	const char *mime)
 {
-    if (offer == NULL || cbd->got_selection)
+    if (cbd->got_selection || offer == NULL)
 	return;
 
     // Mimes with lower indexes in the array are prioritized first
@@ -2525,6 +2525,9 @@ vzwlr_da_offer_v1_listener_offer(void *data,
 
 }
 
+/*
+ * This will always be sent before a selection event
+ */
     static void
 vzwlr_da_device_v1_listener_data_offer(void *data,
 	struct zwlr_data_control_device_v1 *device,
@@ -2547,6 +2550,8 @@ vwl_da_setup_data_receiver(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
     if (cbd != cmp_cbd || cbd->cur_mime == NULL || offer == NULL
 	    || offer != *cmp_offer)
 	goto exit;
+    // Signal that we can just ignore all selection/offer events after this
+    cbd->got_selection = TRUE;
 
     int fds[2];
 
@@ -2565,6 +2570,7 @@ vwl_da_setup_data_receiver(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
 
     close(fds[0]);
     close(fds[1]);
+
 exit:
     if (*cmp_offer != NULL)
     {
@@ -2572,7 +2578,6 @@ exit:
 	*cmp_offer = NULL;
     }
     cbd->cur_mime = NULL;
-    cbd->got_selection = TRUE;
 }
 
     static void
