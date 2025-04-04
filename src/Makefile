@@ -1602,6 +1602,7 @@ BASIC_SRC = \
 	viminfo.c \
 	window.c \
 	wlr-data-control-unstable-v1.c \
+	ext-data-control-unstable-v1.c \
 	bufwrite.c \
 	$(OS_EXTRA_SRC)
 
@@ -1764,6 +1765,7 @@ OBJ_COMMON = \
 	objects/viminfo.o \
 	objects/window.o \
 	objects/wlr-data-control-unstable-v1.o \
+	objects/ext-data-control-unstable-v1.o \
 	objects/bufwrite.o \
 	$(GUI_OBJ) \
 	$(TERM_OBJ) \
@@ -3626,6 +3628,9 @@ objects/window.o: window.c
 
 objects/wlr-data-control-unstable-v1.o: wlr-data-control-unstable-v1.c
 	$(CCC) -o $@ wlr-data-control-unstable-v1.c
+
+objects/ext-data-control-unstable-v1.o: ext-data-control-unstable-v1.c
+	$(CCC) -o $@ ext-data-control-unstable-v1.c
 
 objects/netbeans.o: netbeans.c
 	$(CCC) -o $@ netbeans.c

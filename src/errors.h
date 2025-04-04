@@ -3730,3 +3730,7 @@ EXTERN char e_wayland_failed_dispatching_requests[]
 EXTERN char e_wayland_clipboard_unavailable[]
 	INIT(= N_("E1546: Wayland clipboard is unavailable"));
 #endif
+#ifdef FEAT_CLIPBOARD
+EXTERN char e_clipboard_unavailable[]
+	INIT(= N_("E1547: Clipboard access is unavailable"));
+#endif

@@ -2279,7 +2279,13 @@ typedef enum {
     VWL_DA_SELECTION_CLIPBOARD,
     VWL_DA_SELECTION_PRIMARY,
 } vwl_da_selection_T;
-#endif
+
+typedef enum {
+    VWL_DA_PROTOCOL_UNKNOWN,
+    VWL_DA_PROTOCOL_ZWLR,
+    VWL_DA_PROTOCOL_EXT
+} vwl_da_protocol_T;
+#endif // FEAT_WAYLAND_CLIPBOARD
 
 typedef enum {
     CLIPMETHOD_FAIL,
@@ -2332,10 +2338,12 @@ typedef struct
 #ifdef FEAT_WAYLAND_CLIPBOARD
     union {
 	struct zwlr_data_control_source_v1 *zwlr;
+	struct ext_data_control_source_v1 *ext;
     } source;
 
     union {
 	struct zwlr_data_control_offer_v1 *zwlr;
+	struct ext_data_control_offer_v1 *ext;
     } offer;
     const char *cur_mime; // Current mime type for selection
     int cur_mime_priority; // Priority of mime type compared to others

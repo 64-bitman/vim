@@ -22,6 +22,7 @@
 #ifdef FEAT_WAYLAND_CLIPBOARD
 #include <wayland-client.h>
 #include "wlr-data-control-unstable-v1.h"
+#include "ext-data-control-unstable-v1.h"
 #endif
 
 // Functions for copying and pasting text between applications.
@@ -52,10 +53,30 @@ static void vzwlr_da_device_v1_listener_primary_selection(void *data,
 static void vzwlr_da_device_v1_listener_finished(void *data,
 	struct zwlr_data_control_device_v1 *device);
 
+static void vext_da_offer_v1_listener_offer(void *data,
+	struct ext_data_control_offer_v1 *offer, const char *mime);
+
+static void vext_da_device_v1_listener_data_offer(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer);
+static void vext_da_device_v1_listener_selection(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer);
+static void vext_da_device_v1_listener_primary_selection(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer);
+static void vext_da_device_v1_listener_finished(void *data,
+	struct ext_data_control_device_v1 *device);
+
 static void vzwlr_da_source_v1_listener_send(void *data,
 	struct zwlr_data_control_source_v1 *source, const char *mime, int fd);
 static void vzwlr_da_source_v1_listener_cancelled(void *data,
 	struct zwlr_data_control_source_v1 *source);
+
+static void vext_da_source_v1_listener_send(void *data,
+	struct ext_data_control_source_v1 *source, const char *mime, int fd);
+static void vext_da_source_v1_listener_cancelled(void *data,
+	struct ext_data_control_source_v1 *source);
 
 static struct zwlr_data_control_device_v1_listener vzwlr_da_device_v1_listener = {
     .data_offer = vzwlr_da_device_v1_listener_data_offer,
@@ -64,13 +85,29 @@ static struct zwlr_data_control_device_v1_listener vzwlr_da_device_v1_listener =
     .finished = vzwlr_da_device_v1_listener_finished
 };
 
+static struct ext_data_control_device_v1_listener vext_da_device_v1_listener = {
+    .data_offer = vext_da_device_v1_listener_data_offer,
+    .selection = vext_da_device_v1_listener_selection,
+    .primary_selection = vext_da_device_v1_listener_primary_selection,
+    .finished = vext_da_device_v1_listener_finished
+};
+
 static struct zwlr_data_control_offer_v1_listener vzwlr_da_offer_v1_listener = {
     .offer = vzwlr_da_offer_v1_listener_offer
+};
+
+static struct ext_data_control_offer_v1_listener vext_da_offer_v1_listener = {
+    .offer = vext_da_offer_v1_listener_offer
 };
 
 static struct zwlr_data_control_source_v1_listener vzwlr_da_source_v1_listener = {
     .send = vzwlr_da_source_v1_listener_send,
     .cancelled = vzwlr_da_source_v1_listener_cancelled
+};
+
+static struct ext_data_control_source_v1_listener vext_da_source_v1_listener = {
+    .send = vext_da_source_v1_listener_send,
+    .cancelled = vext_da_source_v1_listener_cancelled
 };
 
 // Mime types we support sending and receiving
@@ -171,7 +208,7 @@ clip_gen_own_selection(Clipboard_T *cbd)
 	return clip_mch_own_selection(cbd);
 #endif
     }
-    if (method == CLIPMETHOD_WAYLAND) {
+    else if (method == CLIPMETHOD_WAYLAND) {
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	return clip_wl_own_selection(cbd);
 #endif
@@ -182,11 +219,7 @@ clip_gen_own_selection(Clipboard_T *cbd)
 	return clip_xterm_own_selection(cbd);
 #endif
     }
-#ifndef FEAT_XCLIPBOARD
-    return clip_mch_own_selection(cbd);
-#else
     return FAIL;
-#endif
 }
 
     void
@@ -235,25 +268,19 @@ clip_gen_lose_selection(Clipboard_T *cbd)
 #ifdef FEAT_GUI
 	clip_mch_lose_selection(cbd);
 #endif
-	return;
     }
-    if (method == CLIPMETHOD_WAYLAND)
+    else if (method == CLIPMETHOD_WAYLAND)
     {
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	clip_wl_lose_selection(cbd);
 #endif
-	return;
     }
     else if (method == CLIPMETHOD_X11)
     {
 #ifdef FEAT_XCLIPBOARD
 	clip_xterm_lose_selection(cbd);
 #endif
-	return;
     }
-#ifndef FEAT_XCLIPBOARD
-    clip_mch_lose_selection(cbd);
-#endif
 }
 
     void
@@ -1286,22 +1313,17 @@ clip_gen_set_selection(Clipboard_T *cbd)
 #ifdef FEAT_GUI
 	clip_mch_set_selection(cbd);
 #endif
-	return;
     }
-    if (method == CLIPMETHOD_WAYLAND)
+    else if (method == CLIPMETHOD_WAYLAND)
     {
-	return; // do nothing
+	// do nothing
     }
     else if (method == CLIPMETHOD_X11)
     {
 #ifdef FEAT_XCLIPBOARD
 	clip_xterm_set_selection(cbd);
 #endif
-	return;
     }
-#ifndef FEAT_XCLIPBOARD
-    clip_mch_set_selection(cbd);
-#endif
 }
 
     static void
@@ -1314,25 +1336,19 @@ clip_gen_request_selection(Clipboard_T *cbd)
 #ifdef FEAT_GUI
 	clip_mch_request_selection(cbd);
 #endif
-	return;
     }
-    if (method == CLIPMETHOD_WAYLAND)
+    else if (method == CLIPMETHOD_WAYLAND)
     {
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	clip_wl_request_selection(cbd);
 #endif
-	return;
     }
     else if (method == CLIPMETHOD_X11)
     {
 #ifdef FEAT_XCLIPBOARD
 	clip_xterm_request_selection(cbd);
 # endif
-	return;
     }
-#ifndef FEAT_XCLIPBOARD
-    clip_mch_request_selection(cbd);
-#endif
 }
 
 #if (defined(FEAT_X11) && defined(FEAT_XCLIPBOARD) && defined(USE_SYSTEM)) \
@@ -2547,6 +2563,49 @@ exit:
 }
 
     static void
+vwl_da_setup_data_receiver(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
+	void *offer, void **cmp_offer, vwl_da_protocol_T protocol)
+{
+    if (cbd != cmp_cbd || cbd->cur_mime == NULL || offer == NULL
+	    || offer != *cmp_offer)
+	goto exit;
+    // Signal that we can just ignore all selection/offer events after this
+    cbd->got_selection = TRUE;
+
+    int fds[2];
+
+    if (pipe(fds) == -1)
+    {
+	verb_msg("Could not open pipe");
+	goto exit;
+    }
+
+    if (protocol == VWL_DA_PROTOCOL_ZWLR)
+	zwlr_data_control_offer_v1_receive(*cmp_offer, cbd->cur_mime, fds[1]);
+    else if (protocol == VWL_DA_PROTOCOL_EXT)
+	ext_data_control_offer_v1_receive(*cmp_offer, cbd->cur_mime, fds[1]);
+
+    if (vwl_flush_requests() == OK)
+	vwl_da_receive_data(cbd, fds[0]);
+    else
+	emsg(_(e_wayland_failed_sending_requests));
+
+    close(fds[0]);
+    close(fds[1]);
+exit:
+    if (*cmp_offer != NULL)
+    {
+	if (protocol == VWL_DA_PROTOCOL_ZWLR)
+	    zwlr_data_control_offer_v1_destroy(*cmp_offer);
+	else if (protocol == VWL_DA_PROTOCOL_EXT)
+	    ext_data_control_offer_v1_destroy(*cmp_offer);
+
+	*cmp_offer = NULL;
+    }
+    cbd->cur_mime = NULL;
+}
+
+    static void
 vwl_choose_offer(Clipboard_T *cbd, void **cbd_offer, void *offer,
 	const char *mime)
 {
@@ -2572,6 +2631,25 @@ vwl_choose_offer(Clipboard_T *cbd, void **cbd_offer, void *offer,
 }
 
     static void
+vwl_export_offers(void *source, vwl_da_protocol_T protocol)
+{
+    for (int i = 0; i < sizeof(supported_mimes)/sizeof(*supported_mimes); i++)
+    {
+	if (STRCMP(supported_mimes[i], MIME_TEXT_UTF8) == 0
+		&& !enc_utf8)
+	    // Skip utf8 if encoding is not set to it
+	    continue;
+
+	if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+	    zwlr_data_control_source_v1_offer(source, supported_mimes[i]);
+	else if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_EXT)
+	    ext_data_control_source_v1_offer(source, supported_mimes[i]);
+	else
+	    return;
+    }
+}
+
+    static void
 vzwlr_da_offer_v1_listener_offer(void *data,
 	struct zwlr_data_control_offer_v1 *offer, const char *mime)
 {
@@ -2591,48 +2669,8 @@ vzwlr_da_device_v1_listener_data_offer(void *data,
     if (offer == NULL)
 	return;
 
-    if (zwlr_data_control_offer_v1_add_listener(offer,
-		&vzwlr_da_offer_v1_listener, data) == -1)
-	verb_msg("Failed adding listener to wayland offer object");
-}
-
-    static void
-vwl_da_setup_data_receiver(Clipboard_T *cbd, Clipboard_T *cmp_cbd,
-	void *offer, void **cmp_offer, void(*recv_func)(
-	    struct zwlr_data_control_offer_v1 *offer, const char *mime, int fd),
-	void(*destroy_func)(struct zwlr_data_control_offer_v1 *offer))
-{
-    if (cbd != cmp_cbd || cbd->cur_mime == NULL || offer == NULL
-	    || offer != *cmp_offer)
-	goto exit;
-    // Signal that we can just ignore all selection/offer events after this
-    cbd->got_selection = TRUE;
-
-    int fds[2];
-
-    if (pipe(fds) == -1)
-    {
-	verb_msg("Could not open pipe");
-	goto exit;
-    }
-
-    recv_func(*cmp_offer, cbd->cur_mime, fds[1]);
-
-    if (vwl_flush_requests() == OK)
-	vwl_da_receive_data(cbd, fds[0]);
-    else
-	verb_msg("Failed receiving data");
-
-    close(fds[0]);
-    close(fds[1]);
-
-exit:
-    if (*cmp_offer != NULL)
-    {
-	destroy_func(*cmp_offer);
-	*cmp_offer = NULL;
-    }
-    cbd->cur_mime = NULL;
+    zwlr_data_control_offer_v1_add_listener(offer,
+		&vzwlr_da_offer_v1_listener, data);
 }
 
     static void
@@ -2642,8 +2680,7 @@ vzwlr_da_device_v1_listener_selection(void *data,
 {
     vwl_da_setup_data_receiver(data, &clip_plus, offer,
 	    (void**)&(((Clipboard_T*)data)->offer.zwlr),
-	    zwlr_data_control_offer_v1_receive,
-	    zwlr_data_control_offer_v1_destroy);
+	    VWL_DA_PROTOCOL_ZWLR);
 }
 
     static void
@@ -2653,8 +2690,7 @@ vzwlr_da_device_v1_listener_primary_selection(void *data,
 {
     vwl_da_setup_data_receiver(data, &clip_star, offer,
 	    (void**)&(((Clipboard_T*)data)->offer.zwlr),
-	    zwlr_data_control_offer_v1_receive,
-	    zwlr_data_control_offer_v1_destroy);
+	    VWL_DA_PROTOCOL_ZWLR);
 }
 
     static void
@@ -2671,6 +2707,112 @@ vzwlr_da_device_v1_listener_finished(void *data,
 	cbd->offer.zwlr = NULL;
     }
     cbd->cur_mime = NULL;
+}
+
+    static void
+vzwlr_da_source_v1_listener_send(void *data,
+	struct zwlr_data_control_source_v1 *source, const char *mime, int fd)
+{
+    vwl_da_send_data(data, fd, mime);
+}
+
+    static void
+vzwlr_da_source_v1_listener_cancelled(void *data,
+	struct zwlr_data_control_source_v1 *source)
+{
+    clip_lose_selection(data);
+}
+
+/*
+ *
+ */
+    static void
+vext_da_offer_v1_listener_offer(void *data,
+	struct ext_data_control_offer_v1 *offer, const char *mime)
+{
+    vwl_choose_offer(data, (void**)(&((Clipboard_T*) data)->offer.ext),
+	    offer, mime);
+
+}
+
+/*
+ * This will always be sent before a selection event
+ */
+    static void
+vext_da_device_v1_listener_data_offer(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer)
+{
+    if (offer == NULL)
+	return;
+
+    ext_data_control_offer_v1_add_listener(offer,
+		&vext_da_offer_v1_listener, data);
+}
+
+/*
+ *
+ */
+    static void
+vext_da_device_v1_listener_selection(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer)
+{
+    vwl_da_setup_data_receiver(data, &clip_plus, offer,
+	    (void**)&(((Clipboard_T*)data)->offer.ext),
+	    VWL_DA_PROTOCOL_EXT);
+}
+
+/*
+ *
+ */
+    static void
+vext_da_device_v1_listener_primary_selection(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer)
+{
+    vwl_da_setup_data_receiver(data, &clip_star, offer,
+	    (void**)&(((Clipboard_T*)data)->offer.zwlr),
+	    VWL_DA_PROTOCOL_EXT);
+}
+
+/*
+ *
+ */
+    static void
+vext_da_device_v1_listener_finished(void *data,
+	struct ext_data_control_device_v1 *device)
+{
+    Clipboard_T *cbd = data;
+
+    ext_data_control_device_v1_destroy(device);
+
+    if (cbd->offer.ext != NULL)
+    {
+	ext_data_control_offer_v1_destroy(cbd->offer.ext);
+	cbd->offer.ext = NULL;
+    }
+    cbd->cur_mime = NULL;
+}
+
+/*
+ *
+ */
+    static void
+vext_da_source_v1_listener_send(void *data,
+	struct ext_data_control_source_v1 *source, const char *mime, int fd)
+{
+    vwl_da_send_data(data, fd, mime);
+}
+
+/*
+ *
+ */
+    static void
+vext_da_source_v1_listener_cancelled(void *data,
+	struct ext_data_control_source_v1 *source)
+{
+    clip_lose_selection(data);
 }
 
     void
@@ -2692,31 +2834,31 @@ clip_wl_request_selection(Clipboard_T *cbd)
 	if (device == NULL)
 	    return;
 
-	if (zwlr_data_control_device_v1_add_listener(device,
-		&vzwlr_da_device_v1_listener, cbd) == -1)
-	{
-	    zwlr_data_control_device_v1_destroy(device);
-	    return;
-	}
+	zwlr_data_control_device_v1_add_listener(device,
+		&vzwlr_da_device_v1_listener, cbd);
 
-	if (vwl_send_requests() == FAIL)
-	    emsg(_(e_wayland_failed_sending_requests));
-
-	zwlr_data_control_device_v1_destroy(device);
     }
+    else if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_EXT)
+    {
+	device = ext_data_control_manager_v1_get_data_device(
+		vext_da_manager_v1, vwl_seat);
+
+	if (device == NULL)
+	    return;
+
+	ext_data_control_device_v1_add_listener(device,
+		&vext_da_device_v1_listener, cbd);
+    }
+
+    if (vwl_send_requests() == FAIL)
+	emsg(_(e_wayland_failed_sending_requests));
+
+    if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+	zwlr_data_control_device_v1_destroy(device);
+    else if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_EXT)
+	ext_data_control_device_v1_destroy(device);
+
     vwl_send_requests();
-}
-
-static void vzwlr_da_source_v1_listener_send(void *data,
-	struct zwlr_data_control_source_v1 *source, const char *mime, int fd)
-{
-    vwl_da_send_data(data, fd, mime);
-}
-
-static void vzwlr_da_source_v1_listener_cancelled(void *data,
-	struct zwlr_data_control_source_v1 *source)
-{
-    clip_lose_selection(data);
 }
 
 /*
@@ -2739,10 +2881,6 @@ clip_wl_own_selection(Clipboard_T *cbd)
 
     if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
     {
-	// Shouldn't happen
-	if (cbd->source.zwlr != NULL)
-	    return FAIL;
-
 	source = zwlr_data_control_manager_v1_create_data_source(
 		vzwlr_da_manager_v1);
 
@@ -2757,15 +2895,8 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	    zwlr_data_control_source_v1_destroy(source);
 	    return FAIL;
 	}
-	// Advertise the mime types we support sending
-	for (int i = 0; i < sizeof(supported_mimes)/sizeof(*supported_mimes); i++)
-	{
-	    if (STRCMP(supported_mimes[i], MIME_TEXT_UTF8) == 0
-		    && !enc_utf8)
-		// Skip utf8 if we encoding is not set to it
-		continue;
-	    zwlr_data_control_source_v1_offer(source, supported_mimes[i]);
-	}
+
+	vwl_export_offers(source, VWL_DA_PROTOCOL_ZWLR);
 
 	if (cbd == &clip_plus)
 	    zwlr_data_control_device_v1_set_selection(vzwlr_source_da_device_v1,
@@ -2773,6 +2904,32 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	else if (cbd == &clip_star)
 	    zwlr_data_control_device_v1_set_primary_selection(
 		    vzwlr_source_da_device_v1, source);
+    }
+    else if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_EXT)
+    {
+	source = ext_data_control_manager_v1_create_data_source(
+		vext_da_manager_v1);
+
+	cbd->source.ext = source;
+
+	if (source == NULL)
+	    return FAIL;
+
+	if (ext_data_control_source_v1_add_listener(source,
+		    &vext_da_source_v1_listener, cbd) == -1)
+	{
+	    ext_data_control_source_v1_destroy(source);
+	    return FAIL;
+	}
+
+	vwl_export_offers(source, VWL_DA_PROTOCOL_EXT);
+
+	if (cbd == &clip_plus)
+	    ext_data_control_device_v1_set_selection(vext_source_da_device_v1,
+		    source);
+	else if (cbd == &clip_star)
+	    ext_data_control_device_v1_set_primary_selection(
+		    vext_source_da_device_v1, source);
     }
 
     if (vwl_dispatch_queue() == FAIL)
@@ -2784,6 +2941,12 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	    zwlr_data_control_source_v1_destroy(source);
 	    cbd->source.zwlr = NULL;
 	}
+	else if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_EXT)
+	{
+	    ext_data_control_source_v1_destroy(source);
+	    cbd->source.ext = NULL;
+	}
+
 	return FAIL;
     }
 
@@ -2796,13 +2959,15 @@ clip_wl_own_selection(Clipboard_T *cbd)
     void
 clip_wl_lose_selection(Clipboard_T *cbd)
 {
-    if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+    if (cbd->source.zwlr != NULL)
     {
-	if (cbd->source.zwlr != NULL)
-	{
-	    zwlr_data_control_source_v1_destroy(cbd->source.zwlr);
-	    cbd->source.zwlr = NULL;
-	}
+	zwlr_data_control_source_v1_destroy(cbd->source.zwlr);
+	cbd->source.zwlr = NULL;
+    }
+    if (cbd->source.ext != NULL)
+    {
+	ext_data_control_source_v1_destroy(cbd->source.ext);
+	cbd->source.ext = NULL;
     }
     vwl_send_requests();
 }
@@ -2841,7 +3006,7 @@ get_clipmethod(void)
 	else if (STRCMP(buf, "wayland") == 0)
 	{
 #ifdef FEAT_WAYLAND_CLIPBOARD
-	    if (vwl_display != NULL)
+	    if (vzwlr_da_manager_v1 != NULL || vext_da_manager_v1 != NULL)
 		method = CLIPMETHOD_WAYLAND;
 #endif
 	}
@@ -2878,6 +3043,10 @@ get_clipmethod(void)
 
     // No match found, use "none".
     ret = CLIPMETHOD_NONE;
+
+    // No way of accessing clipboard with current clipmethod value,
+    // make clipboard unavailable.
+    clip_init(FALSE);
 
 theend:
     vim_free(buf);

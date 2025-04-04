@@ -140,6 +140,7 @@ static struct wl_registry_listener vwl_registry_listener = {
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 #include "wlr-data-control-unstable-v1.h"
+#include "ext-data-control-unstable-v1.h"
 #endif
 
 #endif
@@ -9047,19 +9048,22 @@ vwl_registry_listener_global(void *data UNUSED,
 	const char *interface, uint32_t version)
 {
 #ifdef FEAT_WAYLAND_CLIPBOARD
-    if (strcmp(interface, zwlr_data_control_manager_v1_interface.name) == 0 &&
-	    version == (uint32_t)zwlr_data_control_manager_v1_interface.version
+    if (strcmp(interface, zwlr_data_control_manager_v1_interface.name) == 0
 	    && vzwlr_da_manager_v1 == NULL)
     {
 	vzwlr_da_manager_v1 = wl_registry_bind(vwl_registry, name,
 		&zwlr_data_control_manager_v1_interface, version);
 	vzwlr_da_manager_v1_name = name;
     }
-    else
+    else if (strcmp(interface, ext_data_control_manager_v1_interface.name) == 0
+	    && vext_da_manager_v1 == NULL)
+    {
+	vext_da_manager_v1 = wl_registry_bind(vwl_registry, name,
+		&ext_data_control_manager_v1_interface, version);
+	vext_da_manager_v1_name = name;
+    }
 #endif
-    if (strcmp(interface, wl_seat_interface.name) == 0 &&
-	    version == (uint32_t)wl_seat_interface.version &&
-	    vwl_seat == NULL)
+    if (strcmp(interface, wl_seat_interface.name) == 0 && vwl_seat == NULL)
     {
 	vwl_seat = wl_registry_bind(vwl_registry, name, &wl_seat_interface,
 		version);
@@ -9084,7 +9088,8 @@ vwl_registry_listener_global_remove(void *data UNUSED,
 #endif
     }
 #ifdef FEAT_WAYLAND_CLIPBOARD
-    else if (name == vzwlr_da_manager_v1_name)
+    else if (name == vzwlr_da_manager_v1_name
+	    || name == vext_da_manager_v1_name)
 	vwl_disconnect_clipboard();
 #endif
 }
@@ -9120,6 +9125,7 @@ vwl_connect_client(void)
     if (vwl_send_requests() == FAIL)
 	goto error;
 
+    clip_init(TRUE);
     return OK;
 error:
     vwl_disconnect_client();
@@ -9162,13 +9168,32 @@ vwl_disconnect_client(void)
     int
 vwl_connect_clipboard(void)
 {
-    if (vwl_may_restore_connection(TRUE) == FAIL)
-	return FAIL;
-    if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL)
+    if (vwl_may_restore_connection(TRUE) == FAIL || vwl_seat == NULL)
 	return FAIL;
 
     // Prioritize ext-data-control over zwlr-data-control
-    if (vzwlr_da_manager_v1 != NULL)
+    if (vext_da_manager_v1 != NULL)
+    {
+	vwl_cur_da_protocol = VWL_DA_PROTOCOL_EXT;
+
+	if (vext_source_da_device_v1 == NULL)
+	{
+	    vext_source_da_device_v1 =
+		ext_data_control_manager_v1_get_data_device(
+			vext_da_manager_v1, vwl_seat);
+
+	    if (vext_source_da_device_v1 == NULL)
+		return FAIL;
+
+	    if (vwl_send_requests() == FAIL)
+	    {
+		ext_data_control_device_v1_destroy(vext_source_da_device_v1);
+		vext_source_da_device_v1 = NULL;
+		return FAIL;
+	    }
+	}
+    }
+    else if (vzwlr_da_manager_v1 != NULL)
     {
 	vwl_cur_da_protocol = VWL_DA_PROTOCOL_ZWLR;
 
@@ -9188,9 +9213,10 @@ vwl_connect_clipboard(void)
 		return FAIL;
 	    }
 	}
-	return OK;
     }
-    return FAIL;
+    else
+	return FAIL;
+    return OK;
 }
 
 /*
@@ -9200,19 +9226,26 @@ vwl_connect_clipboard(void)
     void
 vwl_disconnect_clipboard(void)
 {
-    if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+    if (vzwlr_da_manager_v1 != NULL)
     {
-	if (vzwlr_da_manager_v1 != NULL)
-	{
-	    zwlr_data_control_manager_v1_destroy(vzwlr_da_manager_v1);
-	    vzwlr_da_manager_v1 = NULL;
-	}
+	zwlr_data_control_manager_v1_destroy(vzwlr_da_manager_v1);
+	vzwlr_da_manager_v1 = NULL;
+    }
 
-	if (vzwlr_source_da_device_v1 != NULL)
-	{
-	    zwlr_data_control_device_v1_destroy(vzwlr_source_da_device_v1);
-	    vzwlr_source_da_device_v1 = NULL;
-	}
+    if (vzwlr_source_da_device_v1 != NULL)
+    {
+	zwlr_data_control_device_v1_destroy(vzwlr_source_da_device_v1);
+	vzwlr_source_da_device_v1 = NULL;
+    }
+    if (vext_da_manager_v1 != NULL)
+    {
+	ext_data_control_manager_v1_destroy(vext_da_manager_v1);
+	vext_da_manager_v1 = NULL;
+    }
+    if (vext_source_da_device_v1 != NULL)
+    {
+	ext_data_control_device_v1_destroy(vext_source_da_device_v1);
+	vext_source_da_device_v1 = NULL;
     }
     vwl_send_requests();
 
@@ -9228,11 +9261,20 @@ vwl_disconnect_clipboard(void)
     int
 vwl_data_control_valid(void)
 {
-    if (!vwl_still_connected())
+    if (!vwl_still_connected() || vwl_seat == NULL)
 	return FALSE;
 
-    if (vwl_seat == NULL || vzwlr_da_manager_v1 == NULL
-	    || vzwlr_source_da_device_v1 == NULL)
+    if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
+    {
+	if (vzwlr_da_manager_v1 == NULL || vzwlr_source_da_device_v1 == NULL)
+	    return FALSE;
+    }
+    else if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_EXT)
+    {
+	if (vext_da_manager_v1 == NULL || vext_source_da_device_v1 == NULL)
+	    return FALSE;
+    }
+    else
 	return FALSE;
 
     return TRUE;
