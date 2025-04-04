@@ -1307,13 +1307,16 @@ clip_gen_set_selection(Clipboard_T *cbd)
 	}
     }
 
-#ifdef FEAT_XCLIPBOARD
+#if defined(FEAT_XCLIPBOARD) || defined(FEAT_WAYLAND_CLIPBOARD)
 # ifdef FEAT_GUI
     if (gui.in_use)
 	clip_mch_set_selection(cbd);
     else
 # endif
+#ifdef FEAT_XCLIPBOARD
 	clip_xterm_set_selection(cbd);
+#endif
+    // Do nothing for wayland
 #else
     clip_mch_set_selection(cbd);
 #endif
@@ -2519,6 +2522,7 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
 	if (select(fd + 1, NULL, &wfds, NULL, &tv) <= 0)
 #endif
 	{
+	    // We cast to char so that we only send one byte
 	    written = write(fd, (char_u*)&motion_type, sizeof(motion_type));
 	    if (written == -1)
 		goto exit;
