@@ -2823,7 +2823,8 @@ clip_wl_request_selection(Clipboard_T *cbd)
     void *device;
     if (vwl_connect_clipboard() == FAIL)
     {
-	emsg(_(e_wayland_clipboard_unavailable));
+	// Try another way of accessing clipboard
+	choose_clipmethod();
 	return;
     }
     cbd->got_selection = FALSE;
@@ -2874,7 +2875,7 @@ clip_wl_own_selection(Clipboard_T *cbd)
 
     if (vwl_connect_clipboard() == FAIL)
     {
-	emsg(_(e_wayland_clipboard_unavailable));
+	choose_clipmethod();
 	return FAIL;
     }
 

@@ -3719,18 +3719,8 @@ EXTERN char e_cannot_use_variadic_tuple_in_concatenation[]
 EXTERN char e_unicode_val_too_large[]
 	INIT(= N_("E1541: Value too large, max Unicode codepoint is U+10FFFF"));
 #ifdef FEAT_WAYLAND
-EXTERN char e_wayland_display_not_connected[]
-	INIT(= N_("E1542: Not connected to any wayland display"));
 EXTERN char e_wayland_failed_sending_requests[]
-	INIT(= N_("E1544: Error sending requests to wayland compositor"));
+	INIT(= N_("E1542: Error sending requests to wayland compositor"));
 EXTERN char e_wayland_failed_dispatching_requests[]
-	INIT(= N_("E1545: Error dispatching requests from wayland compositor"));
-#endif
-#ifdef FEAT_WAYLAND_CLIPBOARD
-EXTERN char e_wayland_clipboard_unavailable[]
-	INIT(= N_("E1546: Wayland clipboard is unavailable"));
-#endif
-#ifdef FEAT_CLIPBOARD
-EXTERN char e_clipboard_unavailable[]
-	INIT(= N_("E1547: Clipboard access is unavailable"));
+	INIT(= N_("E1543: Error dispatching requests from wayland compositor"));
 #endif
