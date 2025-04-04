@@ -9035,13 +9035,6 @@ vwl_dispatch_queue(void)
     if (vwl_display == NULL || vwl_flush_requests() == FAIL)
 	return FAIL;
 
-    // When wl_display_dispatch is called successfully and then the
-    // connection to the compositor is lost, leak sanitizer reports a very
-    // tiny memory leak coming from the wl_display_dispatch function. Not
-    // sure if this is a false positive or just a bug with libwayland.
-    // "Fix" seems to be to keep all the old display objects alive, and
-    // have them referenced somehow, but that itself would be an even
-    // bigger memory leak indirectly.
     if (wl_display_dispatch(vwl_display) == -1)
 	return FAIL;
 
