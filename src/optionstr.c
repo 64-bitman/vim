@@ -1386,11 +1386,11 @@ expand_set_clipboard(optexpand_T *args, int *numMatches, char_u ***matches)
     char *
 did_set_clipmethod(optset_T *args UNUSED)
 {
-    // Call get_clipmethod to check if option value is valid and lose selection
-    // if previous clipmethod is different from new one
-    clipmethod_T method = get_clipmethod();
+    // Lose selections in case we use a different method than the current
+    clip_lose_selection(&clip_star);
+    clip_lose_selection(&clip_plus);
 
-    if (method == CLIPMETHOD_FAIL)
+    if (clipmethod_error)
 	return e_invalid_argument;
 
     return NULL;

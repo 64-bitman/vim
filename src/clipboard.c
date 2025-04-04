@@ -3049,6 +3049,8 @@ get_clipmethod(void)
     clip_init(FALSE);
 
 theend:
+    clipmethod_error = (ret == CLIPMETHOD_FAIL);
+
     vim_free(buf);
     return ret;
 }

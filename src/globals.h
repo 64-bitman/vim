@@ -2100,5 +2100,8 @@ EXTERN clipmethod_T prev_clipmethod INIT(= CLIPMETHOD_NONE);
 // TRUE if we are currently in the process of losing clipboard.
 // See clip_gen_lose_selection() and get_clipmethod for more details
 EXTERN int clip_is_losing INIT(= FALSE);
+
+// Error when calling get_clipmethod()
+EXTERN int clipmethod_error INIT(= FALSE);
 #endif
 

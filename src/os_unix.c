@@ -9377,7 +9377,6 @@ vwl_disconnect_clipboard(void)
 	zwlr_data_control_manager_v1_destroy(vzwlr_da_manager_v1);
 	vzwlr_da_manager_v1 = NULL;
     }
-
     if (vzwlr_source_da_device_v1 != NULL)
     {
 	zwlr_data_control_device_v1_destroy(vzwlr_source_da_device_v1);
