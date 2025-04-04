@@ -3006,7 +3006,7 @@ get_clipmethod(void)
 	else if (STRCMP(buf, "wayland") == 0)
 	{
 #ifdef FEAT_WAYLAND_CLIPBOARD
-	    if (vzwlr_da_manager_v1 != NULL || vext_da_manager_v1 != NULL)
+	    if (vwl_data_control_valid())
 		method = CLIPMETHOD_WAYLAND;
 #endif
 	}

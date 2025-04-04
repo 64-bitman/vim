@@ -650,6 +650,9 @@ vim_main2(void)
 #ifdef FEAT_WAYLAND
     vwl_connect_client();
 #endif
+#ifdef FEAT_WAYLAND_CLIPBOARD
+    vwl_connect_clipboard();
+#endif
 
     /*
      * If "-" argument given: Read file from stdin.

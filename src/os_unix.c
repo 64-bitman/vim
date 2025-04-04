@@ -141,6 +141,50 @@ static struct wl_registry_listener vwl_registry_listener = {
 #ifdef FEAT_WAYLAND_CLIPBOARD
 #include "wlr-data-control-unstable-v1.h"
 #include "ext-data-control-unstable-v1.h"
+
+// Dummy functions
+static void vzwlr_da_source_device_v1_listener_data_offer(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer);
+static void vzwlr_da_source_device_v1_listener_selection(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer);
+static void vzwlr_da_source_device_v1_listener_primary_selection(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer);
+
+static void vzwlr_da_source_device_v1_listener_finished(void *data,
+	struct zwlr_data_control_device_v1 *device);
+
+// Dummy functions
+static void vext_da_source_device_v1_listener_data_offer(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer);
+static void vext_da_source_device_v1_listener_selection(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer);
+static void vext_da_source_device_v1_listener_primary_selection(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer);
+
+static void vext_da_source_device_v1_listener_finished(void *data,
+	struct ext_data_control_device_v1 *device);
+
+static struct zwlr_data_control_device_v1_listener
+    vzwlr_da_source_device_v1_listener = {
+	.data_offer = vzwlr_da_source_device_v1_listener_data_offer,
+	.selection = vzwlr_da_source_device_v1_listener_selection,
+	.primary_selection = vzwlr_da_source_device_v1_listener_primary_selection,
+	.finished = vzwlr_da_source_device_v1_listener_finished
+    };
+static struct ext_data_control_device_v1_listener
+    vext_da_source_device_v1_listener = {
+	.data_offer = vext_da_source_device_v1_listener_data_offer,
+	.selection = vext_da_source_device_v1_listener_selection,
+	.primary_selection = vext_da_source_device_v1_listener_primary_selection,
+	.finished = vext_da_source_device_v1_listener_finished
+    };
+
 #endif
 
 #endif
@@ -9163,6 +9207,94 @@ vwl_disconnect_client(void)
 #ifdef FEAT_WAYLAND_CLIPBOARD
 
 /*
+ * Dummy function
+ */
+static void vzwlr_da_source_device_v1_listener_data_offer(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer)
+{
+}
+
+/*
+ * Dummy function
+ */
+static void vzwlr_da_source_device_v1_listener_selection(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer)
+{
+    if (offer != NULL)
+	zwlr_data_control_offer_v1_destroy(offer);
+}
+
+/*
+ * Dummy function
+ */
+static void vzwlr_da_source_device_v1_listener_primary_selection(void *data,
+	struct zwlr_data_control_device_v1 *device,
+	struct zwlr_data_control_offer_v1 *offer)
+{
+    if (offer != NULL)
+	zwlr_data_control_offer_v1_destroy(offer);
+}
+
+/*
+ *
+ */
+static void vzwlr_da_source_device_v1_listener_finished(void *data,
+	struct zwlr_data_control_device_v1 *device)
+{
+    // Should always be true
+    if (device == vzwlr_source_da_device_v1)
+	vzwlr_source_da_device_v1 = NULL;
+
+    zwlr_data_control_device_v1_destroy(device);
+}
+
+/*
+ * Dummy function
+ */
+static void vext_da_source_device_v1_listener_data_offer(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer)
+{
+}
+
+/*
+ * Dummy function
+ */
+static void vext_da_source_device_v1_listener_selection(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer)
+{
+    if (offer != NULL)
+	ext_data_control_offer_v1_destroy(offer);
+}
+
+/*
+ * Dummy function
+ */
+static void vext_da_source_device_v1_listener_primary_selection(void *data,
+	struct ext_data_control_device_v1 *device,
+	struct ext_data_control_offer_v1 *offer)
+{
+    if (offer != NULL)
+	ext_data_control_offer_v1_destroy(offer);
+}
+
+/*
+ *
+ */
+static void vext_da_source_device_v1_listener_finished(void *data,
+	struct ext_data_control_device_v1 *device)
+{
+    // Should always be true
+    if (device == vext_source_da_device_v1)
+	vzwlr_source_da_device_v1 = NULL;
+
+    ext_data_control_device_v1_destroy(device);
+}
+
+/*
  *
  */
     int
@@ -9174,6 +9306,11 @@ vwl_connect_clipboard(void)
     // Prioritize ext-data-control over zwlr-data-control
     if (vext_da_manager_v1 != NULL)
     {
+	// Disconnect clipboard if we were using a different protocol before.
+	if (vwl_cur_da_protocol != VWL_DA_PROTOCOL_UNKNOWN
+		&& vwl_cur_da_protocol != VWL_DA_PROTOCOL_EXT)
+	    vwl_disconnect_clipboard();
+
 	vwl_cur_da_protocol = VWL_DA_PROTOCOL_EXT;
 
 	if (vext_source_da_device_v1 == NULL)
@@ -9185,7 +9322,10 @@ vwl_connect_clipboard(void)
 	    if (vext_source_da_device_v1 == NULL)
 		return FAIL;
 
-	    if (vwl_send_requests() == FAIL)
+            if (ext_data_control_device_v1_add_listener(
+                    vext_source_da_device_v1,
+                    &vext_da_source_device_v1_listener, NULL) == -1 ||
+                vwl_send_requests() == FAIL)
 	    {
 		ext_data_control_device_v1_destroy(vext_source_da_device_v1);
 		vext_source_da_device_v1 = NULL;
@@ -9195,6 +9335,10 @@ vwl_connect_clipboard(void)
     }
     else if (vzwlr_da_manager_v1 != NULL)
     {
+	if (vwl_cur_da_protocol != VWL_DA_PROTOCOL_UNKNOWN
+		&& vwl_cur_da_protocol != VWL_DA_PROTOCOL_ZWLR)
+	    vwl_disconnect_clipboard();
+
 	vwl_cur_da_protocol = VWL_DA_PROTOCOL_ZWLR;
 
 	if (vzwlr_source_da_device_v1 == NULL)
@@ -9203,16 +9347,18 @@ vwl_connect_clipboard(void)
 		zwlr_data_control_manager_v1_get_data_device(
 			vzwlr_da_manager_v1, vwl_seat);
 
-	    if (vzwlr_source_da_device_v1 == NULL)
-		return FAIL;
-
-	    if (vwl_send_requests() == FAIL)
-	    {
-		zwlr_data_control_device_v1_destroy(vzwlr_source_da_device_v1);
-		vzwlr_source_da_device_v1 = NULL;
-		return FAIL;
-	    }
-	}
+            if (vzwlr_source_da_device_v1 == NULL)
+                return FAIL;
+            if (zwlr_data_control_device_v1_add_listener(
+                    vzwlr_source_da_device_v1,
+                    &vzwlr_da_source_device_v1_listener, NULL) == -1 ||
+                vwl_send_requests() == FAIL)
+            {
+                zwlr_data_control_device_v1_destroy(vzwlr_source_da_device_v1);
+                vzwlr_source_da_device_v1 = NULL;
+                return FAIL;
+            }
+        }
     }
     else
 	return FAIL;
