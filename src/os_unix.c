@@ -1456,7 +1456,8 @@ mch_suspend(void)
     settmode(TMODE_COOK);
     out_flush();	    // needed to disable mouse on some systems
 
-# if defined(FEAT_CLIPBOARD) && defined(FEAT_X11)
+# if defined(FEAT_CLIPBOARD) && (defined(FEAT_X11) \
+	|| defined(FEAT_WAYLAND_CLIPBOARD))
     loose_clipboard();
 # endif
 # if defined(SIGCONT)
@@ -4907,8 +4908,11 @@ mch_call_shell_system(
     if (options & SHELL_COOKED)
 	settmode(TMODE_COOK);	    // set to normal mode
 
-# if defined(FEAT_CLIPBOARD) && defined(FEAT_X11)
+# if defined(FEAT_CLIPBOARD) && (defined(FEAT_X11) \
+	|| defined(FEAT_WAYLAND_CLIPBOARD))
+#ifdef FEAT_X11
     save_clipboard();
+#endif
     loose_clipboard();
 # endif
 

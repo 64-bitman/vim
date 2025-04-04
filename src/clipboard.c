@@ -229,7 +229,7 @@ clip_own_selection(Clipboard_T *cbd)
      * Also want to check somehow that we are reading from the keyboard rather
      * than a mapping etc.
      */
-#ifdef FEAT_X11
+#if defined(FEAT_X11) || defined(FEAT_WAYLAND_CLIPBOARD)
     // Always own the selection, we might have lost it without being
     // notified, e.g. during a ":sh" command.
     if (cbd->available)
@@ -2484,7 +2484,7 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
     char_u *string;
     ssize_t written = 0, total = 0;
     int did_vimenc = TRUE;
-    char_u motion_type;
+    int motion_type;
 #ifndef HAVE_SELECT
     struct pollfd pfd = {
 	.fd = fd,
@@ -2507,6 +2507,7 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
 	return;
     }
 
+    clip_get_selection(cbd);
     motion_type = clip_convert_selection(&string, &length, cbd);
 
     if (motion_type < 0)
@@ -2521,7 +2522,7 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
 	if (select(fd + 1, NULL, &wfds, NULL, &tv) <= 0)
 #endif
 	{
-	    written = write(fd, &motion_type, sizeof(motion_type));
+	    written = write(fd, (char_u*)&motion_type, sizeof(motion_type));
 	    if (written == -1)
 		goto exit;
 	}
@@ -2875,9 +2876,6 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	emsg(_(e_wayland_clipboard_unavailable));
 	return FAIL;
     }
-
-    // Destroy previous source if it hasn't been destroyed yet
-    clip_wl_lose_selection(cbd);
 
     if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
     {
