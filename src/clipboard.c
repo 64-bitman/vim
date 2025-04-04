@@ -3022,7 +3022,7 @@ get_clipmethod(void)
 
 	if (method != CLIPMETHOD_NONE)
 	{
-	    // Make sure to lose any selectins if we are switching to a new method.
+	    // Make sure to lose any selections if we are switching to a new method.
 	    if (prev_clipmethod != CLIPMETHOD_NONE && prev_clipmethod != method)
 	    {
 		// Set this to TRUE so that we don't call get_clipmethod twice
