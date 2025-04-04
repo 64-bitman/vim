@@ -2925,10 +2925,9 @@ ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
-
-
 ac_config_headers="$ac_config_headers auto/config.h:config.h.in"
 
+LIBS="-lwayland-client $LIBS"
 
 printf "%s\n" "#define UNIX 1" >>confdefs.h
 
@@ -8740,11 +8739,8 @@ else
 printf "%s\n" "no" >&6; }
 fi
 
-LIBS="-lwayland-client $LIBS"
-
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for X" >&5
 printf %s "checking for X... " >&6; }
-
 
 # Check whether --with-x was given.
 if test ${with_x+y}
