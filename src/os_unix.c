@@ -1369,7 +1369,7 @@ sigcont_handler SIGDEFARG(sigarg)
 #endif
 
 #if defined(FEAT_CLIPBOARD)
-# if defined(USE_SYSTEM) && defined(FEAT_X11)
+# if defined(USE_SYSTEM) && (defined(FEAT_X11) || defined(FEAT_WAYLAND_CLIPBOARD))
 static void *clip_star_save = NULL;
 static void *clip_plus_save = NULL;
 # endif
@@ -1379,7 +1379,7 @@ static void *clip_plus_save = NULL;
  * We can't respond to requests for the X or wayland selections.
  * Lose them, otherwise other applications will hang.  But first
  * copy the text to cut buffer 0 (for X11). Wayland users must have
- * a clipboard manager to replicate that behaviour.
+ * a clipboard manager to replicate such behaviour.
  */
     static void
 loose_clipboard(void)
@@ -1400,7 +1400,7 @@ loose_clipboard(void)
     }
 }
 
-# if defined(USE_SYSTEM) && defined(FEAT_X11)
+# if defined(USE_SYSTEM) && (defined(FEAT_X11) || defined(FEAT_WAYLAND_CLIPBOARD))
 /*
  * Save clipboard text to restore later.
  */
@@ -4910,7 +4910,7 @@ mch_call_shell_system(
 
 # if defined(FEAT_CLIPBOARD) && (defined(FEAT_X11) \
 	|| defined(FEAT_WAYLAND_CLIPBOARD))
-#ifdef FEAT_X11
+# if defined(FEAT_X11) || defined(FEAT_WAYLAND_CLIPBOARD)
     save_clipboard();
 #endif
     loose_clipboard();
@@ -4974,7 +4974,8 @@ mch_call_shell_system(
 	settmode(TMODE_RAW);	// set to raw mode
     }
     resettitle();
-# if defined(FEAT_CLIPBOARD) && defined(FEAT_X11)
+# if defined(FEAT_CLIPBOARD) && (defined(FEAT_X11) \
+	|| defined(FEAT_WAYLAND_CLIPBOARD))
     restore_clipboard();
 # endif
     return x;

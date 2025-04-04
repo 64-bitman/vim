@@ -2339,11 +2339,13 @@ typedef struct
     union {
 	struct zwlr_data_control_source_v1 *zwlr;
 	struct ext_data_control_source_v1 *ext;
+	void *check; // Used to check if union is null
     } source;
 
     union {
 	struct zwlr_data_control_offer_v1 *zwlr;
 	struct ext_data_control_offer_v1 *ext;
+	void *check;
     } offer;
     const char *cur_mime; // Current mime type for selection
     int cur_mime_priority; // Priority of mime type compared to others

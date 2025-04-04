@@ -2089,19 +2089,10 @@ EXTERN struct zwlr_data_control_device_v1 *vzwlr_source_da_device_v1;
 EXTERN struct ext_data_control_device_v1 *vext_source_da_device_v1;
 
 #endif // FEAT_WAYLAND_CLIPBOARD
-
 #endif // FEAT_WAYLAND
 
 #ifdef FEAT_CLIPBOARD
-// Essentially the current clipmethod which we compare to the new one if
-// there is one.
-EXTERN clipmethod_T prev_clipmethod INIT(= CLIPMETHOD_NONE);
-
-// TRUE if we are currently in the process of losing clipboard.
-// See clip_gen_lose_selection() and get_clipmethod for more details
-EXTERN int clip_is_losing INIT(= FALSE);
-
-// Error when calling get_clipmethod()
-EXTERN int clipmethod_error INIT(= FALSE);
+// Current method of accessing clipboard
+EXTERN clipmethod_T clipmethod INIT(= CLIPMETHOD_NONE);
 #endif
 

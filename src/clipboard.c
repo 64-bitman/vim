@@ -120,6 +120,10 @@ static const char *supported_mimes[] = {
     MIME_TEXT,
 };
 
+#if (defined(FEAT_WAYLAND_CLIPBOARD) && defined(USE_SYSTEM)) || defined(PROTO)
+static int clip_wl_owner_exists(Clipboard_T *cbd);
+#endif
+
 #endif
 
 /*
@@ -200,20 +204,18 @@ clip_update_selection(Clipboard_T *clip)
     static int
 clip_gen_own_selection(Clipboard_T *cbd)
 {
-    clipmethod_T method = get_clipmethod();
-
-    if (method == CLIPMETHOD_GUI)
+    if (clipmethod == CLIPMETHOD_GUI)
     {
 #ifdef FEAT_GUI
 	return clip_mch_own_selection(cbd);
 #endif
     }
-    else if (method == CLIPMETHOD_WAYLAND) {
+    else if (clipmethod == CLIPMETHOD_WAYLAND) {
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	return clip_wl_own_selection(cbd);
 #endif
     }
-    else if (method == CLIPMETHOD_X11)
+    else if (clipmethod == CLIPMETHOD_X11)
     {
 #ifdef FEAT_XCLIPBOARD
 	return clip_xterm_own_selection(cbd);
@@ -261,21 +263,19 @@ clip_own_selection(Clipboard_T *cbd)
     static void
 clip_gen_lose_selection(Clipboard_T *cbd)
 {
-    clipmethod_T method = (clip_is_losing) ? prev_clipmethod : get_clipmethod();
-
-    if (method == CLIPMETHOD_GUI)
+    if (clipmethod == CLIPMETHOD_GUI)
     {
 #ifdef FEAT_GUI
 	clip_mch_lose_selection(cbd);
 #endif
     }
-    else if (method == CLIPMETHOD_WAYLAND)
+    else if (clipmethod == CLIPMETHOD_WAYLAND)
     {
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	clip_wl_lose_selection(cbd);
 #endif
     }
-    else if (method == CLIPMETHOD_X11)
+    else if (clipmethod == CLIPMETHOD_X11)
     {
 #ifdef FEAT_XCLIPBOARD
 	clip_xterm_lose_selection(cbd);
@@ -1306,44 +1306,35 @@ clip_gen_set_selection(Clipboard_T *cbd)
 	    return;
 	}
     }
-    clipmethod_T method = get_clipmethod();
 
-    if (method == CLIPMETHOD_GUI)
-    {
-#ifdef FEAT_GUI
-	clip_mch_set_selection(cbd);
-#endif
-    }
-    else if (method == CLIPMETHOD_WAYLAND)
-    {
-	// do nothing
-    }
-    else if (method == CLIPMETHOD_X11)
-    {
 #ifdef FEAT_XCLIPBOARD
+# ifdef FEAT_GUI
+    if (gui.in_use)
+	clip_mch_set_selection(cbd);
+    else
+# endif
 	clip_xterm_set_selection(cbd);
+#else
+    clip_mch_set_selection(cbd);
 #endif
-    }
 }
 
     static void
 clip_gen_request_selection(Clipboard_T *cbd)
 {
-    clipmethod_T method = get_clipmethod();
-
-    if (method == CLIPMETHOD_GUI)
+    if (clipmethod == CLIPMETHOD_GUI)
     {
 #ifdef FEAT_GUI
 	clip_mch_request_selection(cbd);
 #endif
     }
-    else if (method == CLIPMETHOD_WAYLAND)
+    else if (clipmethod == CLIPMETHOD_WAYLAND)
     {
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	clip_wl_request_selection(cbd);
 #endif
     }
-    else if (method == CLIPMETHOD_X11)
+    else if (clipmethod == CLIPMETHOD_X11)
     {
 #ifdef FEAT_XCLIPBOARD
 	clip_xterm_request_selection(cbd);
@@ -1360,24 +1351,30 @@ clip_x11_owner_exists(Clipboard_T *cbd)
 }
 #endif
 
-#if (defined(FEAT_X11) && defined(USE_SYSTEM)) || defined(PROTO)
+#if ((defined(FEAT_X11) || defined(FEAT_WAYLAND_CLIPBOARD)) \
+	&& defined(USE_SYSTEM)) || defined(PROTO)
     int
 clip_gen_owner_exists(Clipboard_T *cbd)
 {
-    clipmethod_T method = get_clipmethod();
-
-    if (method == CLIPMETHOD_GUI)
+    if (clipmethod == CLIPMETHOD_GUI && gui.in_use)
     {
-#ifdef FEAT_GUI_GTK
+# ifdef FEAT_GUI_GTK
 	return clip_gtk_owner_exists(cbd);
-#endif
+# endif
     }
-    else if (method == CLIPMETHOD_X11)
+    else if (clipmethod == CLIPMETHOD_X11)
     {
 #ifdef FEAT_XCLIPBOARD
 	return clip_x11_owner_exists(cbd);
-# endif
+#endif
     }
+    else if (clipmethod == CLIPMETHOD_WAYLAND)
+    {
+#ifdef FEAT_WAYLAND_CLIPBOARD
+	return clip_wl_owner_exists(cbd);
+#endif
+    }
+
     return TRUE;
 }
 #endif
@@ -2877,6 +2874,11 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	return FAIL;
     }
 
+    // Source is already created, no need to to recreate it again,
+    // because we only send the data when the receiver asks.
+    if (cbd->source.check != NULL)
+	return OK;
+
     if (vwl_cur_da_protocol == VWL_DA_PROTOCOL_ZWLR)
     {
 	source = zwlr_data_control_manager_v1_create_data_source(
@@ -2970,10 +2972,22 @@ clip_wl_lose_selection(Clipboard_T *cbd)
     vwl_send_requests();
 }
 
+#if (defined(FEAT_WAYLAND_CLIPBOARD) && defined(USE_SYSTEM)) || defined(PROTO)
+/*
+ *
+ */
+    static int
+clip_wl_owner_exists(Clipboard_T *cbd)
+{
+    return cbd->offer.check != NULL;
+}
+#endif
+
 #endif // FEAT_WAYLAND_CLIPBOARD
 
 /*
- *
+ * Iterate on the 'clipmethod' option value and choose the first method
+ * that works, return it.
  */
     clipmethod_T
 get_clipmethod(void)
@@ -3020,21 +3034,7 @@ get_clipmethod(void)
 
 	if (method != CLIPMETHOD_NONE)
 	{
-	    // Make sure to lose any selections if we are switching to a new method.
-	    if (prev_clipmethod != CLIPMETHOD_NONE && prev_clipmethod != method)
-	    {
-		// Set this to TRUE so that we don't call get_clipmethod twice
-		// and actually lose the selection using the new clipmethod instead
-		// of the old one which we want.
-		clip_is_losing = TRUE;
-		if (clip_star.owned)
-		    clip_lose_selection(&clip_star);
-		if (clip_plus.owned)
-		    clip_lose_selection(&clip_plus);
-		clip_is_losing = FALSE;
-	    }
-
-	    ret = prev_clipmethod = method;
+	    ret = method;
 	    goto theend;
 	}
     }
@@ -3042,13 +3042,7 @@ get_clipmethod(void)
     // No match found, use "none".
     ret = CLIPMETHOD_NONE;
 
-    // No way of accessing clipboard with current clipmethod value,
-    // make clipboard unavailable.
-    clip_init(FALSE);
-
 theend:
-    clipmethod_error = (ret == CLIPMETHOD_FAIL);
-
     vim_free(buf);
     return ret;
 }

@@ -653,6 +653,9 @@ vim_main2(void)
 #ifdef FEAT_WAYLAND_CLIPBOARD
     vwl_connect_clipboard();
 #endif
+#ifdef FEAT_CLIPBOARD
+    clipmethod = get_clipmethod();
+#endif
 
     /*
      * If "-" argument given: Read file from stdin.

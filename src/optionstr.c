@@ -1386,12 +1386,21 @@ expand_set_clipboard(optexpand_T *args, int *numMatches, char_u ***matches)
     char *
 did_set_clipmethod(optset_T *args UNUSED)
 {
-    // Lose selections in case we use a different method than the current
+    clipmethod_T method = get_clipmethod();
+
+    if (method == CLIPMETHOD_FAIL)
+	    return e_invalid_argument;
+    else if (method == CLIPMETHOD_NONE)
+    {
+	clip_init(FALSE);
+	return NULL;
+    }
+    else if (method == clipmethod)
+	return NULL;
+
     clip_lose_selection(&clip_star);
     clip_lose_selection(&clip_plus);
-
-    if (clipmethod_error)
-	return e_invalid_argument;
+    clipmethod = method;
 
     return NULL;
 }
