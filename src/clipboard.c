@@ -2784,6 +2784,7 @@ clip_wl_own_selection(Clipboard_T *cbd)
 	    zwlr_data_control_source_v1_destroy(source);
 	    cbd->source.zwlr = NULL;
 	}
+	return FAIL;
     }
 
     return OK;
