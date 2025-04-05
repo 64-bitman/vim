@@ -2934,6 +2934,24 @@ static struct vimoption options[] =
     {"winwidth",   "wiw",   P_NUM|P_VI_DEF,
 			    (char_u *)&p_wiw, PV_NONE, did_set_winwidth, NULL,
 			    {(char_u *)20L, (char_u *)0L} SCTX_INIT},
+    {"wlrtimeoutlen", "wrm", P_NUM|P_VI_DEF,
+#ifdef FEAT_WAYLAND_CLIPBOARD
+			    (char_u *)&p_wrm, PV_NONE, did_set_wltimeout, NULL,
+			    {(char_u *)10L, (char_u *)0L}
+#else
+			    (char_u *)NULL, PV_NONE, NULL, NULL,
+			    {(char_u *)NULL, (char_u *)0L}
+#endif
+			    SCTX_INIT},
+    {"wltimeoutlen", "wtm", P_NUM|P_VI_DEF,
+#ifdef FEAT_WAYLAND_CLIPBOARD
+			    (char_u *)&p_wtm, PV_NONE, did_set_wltimeout, NULL,
+			    {(char_u *)3000L, (char_u *)0L}
+#else
+			    (char_u *)NULL, PV_NONE, NULL, NULL,
+			    {(char_u *)NULL, (char_u *)0L}
+#endif
+			    SCTX_INIT},
     {"wrap",	    NULL,   P_BOOL|P_VI_DEF|P_RWIN,
 			    (char_u *)VAR_WIN, PV_WRAP, did_set_wrap, NULL,
 			    {(char_u *)TRUE, (char_u *)0L} SCTX_INIT},

@@ -1122,6 +1122,8 @@ EXTERN long	p_wh;		// 'winheight'
 EXTERN long	p_wmh;		// 'winminheight'
 EXTERN long	p_wmw;		// 'winminwidth'
 EXTERN long	p_wiw;		// 'winwidth'
+EXTERN long     p_wrm;		// 'wlrtimeoutlen'
+EXTERN long     p_wtm;		// 'wltimeoutlen'
 #if defined(MSWIN) && defined(FEAT_TERMINAL)
 EXTERN char_u	*p_winptydll;	// 'winptydll'
 #endif

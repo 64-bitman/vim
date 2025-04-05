@@ -2377,7 +2377,7 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
 	.events = POLLIN
     };
 
-    if (poll(&pfd, 1, 3000) <= 0)
+    if (poll(&pfd, 1, p_wtm) <= 0)
 	return;
 #else
     fd_set rfds;
@@ -2386,13 +2386,13 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
     FD_ZERO(&rfds);
     FD_SET(fd, &rfds);
 
-    tv.tv_sec = 3;
-    tv.tv_usec = 0;
+    tv.tv_sec = 0;
+    tv.tv_usec = p_wtm * 1000;
 
     if (select(fd + 1, &rfds, NULL, NULL, &tv) <= 0)
 	return;
     tv.tv_sec = 0;
-    tv.tv_usec = 10 * 1000;
+    tv.tv_usec = p_wrm * 1000;
 #endif
 
     if ((buf = alloc_clear(max_total)) == NULL)
@@ -2405,9 +2405,8 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
 	total += (size_t)r;
 
 	// Break out of loop if we have read all the data
-	// TODO: add option to configure timeout?
 #ifndef HAVE_SELECT
-	if (poll(&pfd, 1, 10) <= 0)
+	if (poll(&pfd, 1, p_wrm) <= 0)
 	    break;
 #else
 	if (select(fd + 1, &rfds, NULL, NULL, &tv) <= 0)
@@ -2497,8 +2496,8 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
     FD_ZERO(&wfds);
     FD_SET(fd, &wfds);
 
-    tv.tv_sec = 3;
-    tv.tv_usec = 0;
+    tv.tv_sec = 0;
+    tv.tv_usec = p_wtm * 1000;
 #endif
 
     if (!cbd->owned)
@@ -2517,7 +2516,7 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
     {
 
 #ifndef HAVE_SELECT
-	if (poll(&pfd, 1, 3000) > 0)
+	if (poll(&pfd, 1, p_wtm) > 0)
 #else
 	if (select(fd + 1, NULL, &wfds, NULL, &tv) <= 0)
 #endif
@@ -2534,7 +2533,7 @@ vwl_da_send_data(Clipboard_T *cbd, int fd, const char *mime)
 
     while (total < length &&
 #ifndef HAVE_SELECT
-	    poll(&pfd, 1, 3000) > 0)
+	    poll(&pfd, 1, p_wtm) > 0)
 #else
 	    select(fd + 1, NULL, &wfds, NULL, &tv) > 0)
 #endif

@@ -9042,7 +9042,7 @@ vwl_dispatch_queue(void)
 	.events = POLLIN
     }
 
-    if (poll(&pfds, 1, 3000) > 0)
+    if (poll(&pfds, 1, p_wtm) > 0)
     {
 #else
     fd_set rfds;
@@ -9051,8 +9051,8 @@ vwl_dispatch_queue(void)
     FD_ZERO(&rfds);
     FD_SET(vwl_display_fd, &rfds);
 
-    tv.tv_sec = 3;
-    tv.tv_usec = 0;
+    tv.tv_sec = 0;
+    tv.tv_usec = p_wtm * 1000;
 
     if (select(vwl_display_fd + 1, &rfds, NULL, NULL, &tv) > 0)
     {
