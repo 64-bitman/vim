@@ -9035,7 +9035,32 @@ vwl_dispatch_queue(void)
     if (vwl_display == NULL || vwl_flush_requests() == FAIL)
 	return FAIL;
 
-    if (wl_display_dispatch(vwl_display) == -1)
+    // Poll until there are events to read
+#ifndef HAVE_SELECT
+    struct pollfd pfd = {
+	.fd = vwl_display_fd,
+	.events = POLLIN
+    }
+
+    if (poll(&pfds, 1, 3000) > 0)
+    {
+#else
+    fd_set rfds;
+    struct timeval tv;
+
+    FD_ZERO(&rfds);
+    FD_SET(vwl_display_fd, &rfds);
+
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+
+    if (select(vwl_display_fd + 1, &rfds, NULL, NULL, &tv) > 0)
+    {
+#endif
+	if (wl_display_dispatch(vwl_display) == -1)
+	    return FAIL;
+    }
+    else
 	return FAIL;
 
     return OK;
