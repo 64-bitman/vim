@@ -596,7 +596,7 @@ static struct vimoption options[] =
     {"clipboard",   "cb",   P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
 #ifdef FEAT_CLIPBOARD
 			    (char_u *)&p_cb, PV_NONE, did_set_clipboard, expand_set_clipboard,
-# ifdef FEAT_XCLIPBOARD
+# if defined(FEAT_XCLIPBOARD) || defined(FEAT_WAYLAND_CLIPBOARD)
 			    {(char_u *)"autoselect,exclude:cons\\|linux",
 							       (char_u *)0L}
 # else
@@ -608,8 +608,19 @@ static struct vimoption options[] =
 #endif
 			    SCTX_INIT},
     {"clipmethod", "cpm",   P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
+#ifdef FEAT_CLIPBOARD
 			    (char_u *)&p_cpm, PV_NONE, did_set_clipmethod, expand_set_clipmethod,
+#if defined(UNIX)
 			    {(char_u *)"gui,wayland,x11", (char_u *)0L}
+#elif defined(VMS)
+			    {(char_u *)"gui,x11", (char_u *)0L}
+#else
+			    {(char_u *)"gui", (char_u *)0L}
+#endif
+#else
+			    (char_u *)NULL, PV_NONE, NULL, NULL,
+			    {(char_u *)"", (char_u *)0L}
+#endif
 			    SCTX_INIT},
     {"cmdheight",   "ch",   P_NUM|P_VI_DEF|P_RALL,
 			    (char_u *)&p_ch, PV_NONE, did_set_cmdheight, NULL,
