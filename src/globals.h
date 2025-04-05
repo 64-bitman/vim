@@ -2074,6 +2074,9 @@ EXTERN uint32_t vwl_seat_name;
 EXTERN int vwl_display_fd;
 EXTERN int vwl_connection_restore_tries;
 #define vwl_connection_restore_tries_max 5
+
+// Wayland display name (ex. wayland-0). If NULL then wl_connect_display will
+// automatically choose what display to conenct to.
 EXTERN char *vwl_display_strname;
 
 #ifdef FEAT_WAYLAND_CLIPBOARD

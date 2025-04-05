@@ -9458,7 +9458,7 @@ vwl_data_control_valid(void)
 ex_wlrestore(exarg_T *eap)
 {
     size_t  arglen;
-    char *tmp;
+    char *tmp = NULL;
 
     if (eap->arg != NULL && (arglen = STRLEN(eap->arg)) > 0)
     {
@@ -9469,9 +9469,9 @@ ex_wlrestore(exarg_T *eap)
 	    semsg(_(e_out_of_memory_allocating_nr_bytes), arglen);
 	    return;
 	}
-	vim_free(vwl_display_strname);
-	vwl_display_strname = tmp;
     }
+    vim_free(vwl_display_strname);
+    vwl_display_strname = tmp;
 
     vwl_disconnect_client();
 
