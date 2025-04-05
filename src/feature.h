@@ -905,8 +905,7 @@
 # endif
 #endif
 
-#if defined(FEAT_NORMAL) && defined(UNIX)
-# define FEAT_WAYLAND
+#if defined(FEAT_NORMAL) && defined(UNIX) && defined(HAVE_WAYLAND)
 # define FEAT_WAYLAND_CLIPBOARD
 # ifndef FEAT_CLIPBOARD
 #  define FEAT_CLIPBOARD

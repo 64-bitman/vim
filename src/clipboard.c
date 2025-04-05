@@ -20,7 +20,6 @@
 #endif
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
-#include <wayland-client.h>
 #include "wlr-data-control-unstable-v1.h"
 #include "ext-data-control-unstable-v1.h"
 #endif

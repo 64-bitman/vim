@@ -125,8 +125,6 @@ static void sig_sysmouse SIGPROTOARG;
 #endif
 
 #ifdef FEAT_WAYLAND
-#include <wayland-client.h>
-
 static void vwl_registry_listener_global(void *data UNUSED,
 	struct wl_registry *registry UNUSED, uint32_t name,
 	const char *interface, uint32_t version);

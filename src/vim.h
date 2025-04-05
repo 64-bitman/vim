@@ -194,6 +194,11 @@
 # define FEAT_X11
 #endif
 
+#if defined(HAVE_WAYLAND)
+#define FEAT_WAYLAND
+#include <wayland-client.h>
+#endif
+
 #ifdef NO_X11_INCLUDES
     // In os_mac_conv.c and os_macosx.m NO_X11_INCLUDES is defined to avoid
     // X11 headers.  Disable all X11 related things to avoid conflicts.
@@ -476,10 +481,6 @@ typedef long long vimlong_T;
 
 #if defined(HAVE_ERRNO_H) || defined(MSWIN)
 # include <errno.h>
-#endif
-
-#ifdef FEAT_WAYLAND
-#include <wayland-client.h>
 #endif
 
 /*

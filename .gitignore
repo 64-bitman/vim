@@ -126,8 +126,3 @@ src/cscope.out
 /.cache/clangd/
 /.ccls-cache/
 /compile_commands.json
-
-# wayland protocol files
-src/wlr-data-control-unstable-v1.c
-src/wlr-data-control-unstable-v1.h
-
