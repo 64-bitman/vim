@@ -2073,6 +2073,8 @@ EXTERN struct wl_seat *vwl_seat;
 EXTERN uint32_t vwl_seat_name;
 EXTERN int vwl_display_fd;
 EXTERN int vwl_connection_restore_tries;
+#define vwl_connection_restore_tries_max 5
+EXTERN char *vwl_display_strname;
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 

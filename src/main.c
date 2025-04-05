@@ -648,7 +648,7 @@ vim_main2(void)
 #endif
 
 #ifdef FEAT_WAYLAND
-    vwl_connect_client();
+    vwl_connect_client(vwl_display_strname);
 #endif
 #ifdef FEAT_WAYLAND_CLIPBOARD
     vwl_connect_clipboard();

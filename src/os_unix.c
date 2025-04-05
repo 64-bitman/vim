@@ -1916,7 +1916,7 @@ ex_xrestore(exarg_T *eap)
 	xterm_display = (char *)vim_strnsave(eap->arg, arglen);
 	xterm_display_allocated = TRUE;
     }
-    smsg(_("restoring display %s"), xterm_display == NULL
+    smsg(_("restoring X11 display %s"), xterm_display == NULL
 		    ? (char *)mch_getenv((char_u *)"DISPLAY") : xterm_display);
 
     clear_xterm_clip();
@@ -9064,12 +9064,14 @@ vwl_may_restore_connection(int reset)
     if (reset)
 	vwl_connection_restore_tries = 0;
 
-    if (!exiting && !v_dying && vwl_connection_restore_tries < 5)
+    // Try reconnecting up to 'vwl_connection_restore_tries_max' times
+    if (!exiting && !v_dying && vwl_connection_restore_tries <
+	    vwl_connection_restore_tries_max)
     {
 	if (!vwl_still_connected())
 	{
 	    vwl_disconnect_client();
-	    if (vwl_connect_client() == OK)
+	    if (vwl_connect_client(vwl_display_strname) == OK)
 		return OK;
 	    vwl_connection_restore_tries++;
 	    return FAIL;
@@ -9141,12 +9143,12 @@ vwl_registry_listener_global_remove(void *data UNUSED,
  * so we can bind to the global objects we need.
  */
     int
-vwl_connect_client(void)
+vwl_connect_client(char *display)
 {
     if (vwl_display == NULL)
     {
 	// TODO: add option to choose wayland socket?
-	vwl_display = wl_display_connect(NULL);
+	vwl_display = wl_display_connect(display);
 
 	if (vwl_display == NULL)
 	    goto error;
@@ -9164,7 +9166,8 @@ vwl_connect_client(void)
 	    goto error;
     }
 
-    if (vwl_send_requests() == FAIL)
+    if ((vwl_display == NULL && vwl_registry == NULL)
+	    || vwl_send_requests() == FAIL)
 	goto error;
 
     clip_init(TRUE);
@@ -9424,5 +9427,42 @@ vwl_data_control_valid(void)
 }
 
 #endif // FEAT_WAYLAND_CLIPBOARD
+
+/*
+ * Disconnect and reconnect wayland connection.
+ */
+    void
+ex_wlrestore(exarg_T *eap)
+{
+    size_t  arglen;
+    char *tmp;
+
+    if (eap->arg != NULL && (arglen = STRLEN(eap->arg)) > 0)
+    {
+	tmp = (char *)vim_strnsave(eap->arg, arglen);
+
+	if (tmp == NULL)
+	{
+	    semsg(_(e_out_of_memory_allocating_nr_bytes), arglen);
+	    return;
+	}
+	vim_free(vwl_display_strname);
+	vwl_display_strname = tmp;
+    }
+
+    vwl_disconnect_client();
+
+    if (vwl_connect_client(vwl_display_strname) == OK)
+	smsg(_("restoring wayland display %s"), vwl_display_strname == NULL
+		    ? (char *)mch_getenv((char_u *)"WAYLAND_DISPLAY")
+		    : vwl_display_strname);
+    else
+    {
+	smsg(_("failed restoring, lost connection to wayland display %s"),
+		vwl_display_strname == NULL ? (char *)mch_getenv((char_u *)"DISPLAY")
+		: vwl_display_strname);
+	choose_clipmethod();
+    }
+}
 
 #endif // FEAT_WAYLAND

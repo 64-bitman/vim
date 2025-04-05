@@ -3052,4 +3052,31 @@ theend:
     return ret;
 }
 
+/*
+ * Choose a clipboard method to use and set it be the current one used.
+ * Returns a message on error else NULL.
+ */
+    char *
+choose_clipmethod(void)
+{
+    clipmethod_T method = get_clipmethod();
+
+    if (method == CLIPMETHOD_FAIL)
+	return e_invalid_argument;
+    else if (method == clipmethod)
+	return NULL;
+
+    if (clip_star.owned)
+	clip_lose_selection(&clip_star);
+    if (clip_plus.owned)
+	clip_lose_selection(&clip_plus);
+
+    clipmethod = method;
+
+    if (clipmethod == CLIPMETHOD_NONE)
+	clip_init(FALSE);
+
+    return NULL;
+}
+
 #endif // FEAT_CLIPBOARD

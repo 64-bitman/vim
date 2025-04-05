@@ -1386,30 +1386,7 @@ expand_set_clipboard(optexpand_T *args, int *numMatches, char_u ***matches)
     char *
 did_set_clipmethod(optset_T *args UNUSED)
 {
-    clipmethod_T method = get_clipmethod();
-
-    if (method == CLIPMETHOD_FAIL)
-	    return e_invalid_argument;
-    else if (method == CLIPMETHOD_NONE)
-    {
-	if (clip_star.owned)
-	    clip_lose_selection(&clip_star);
-	if (clip_plus.owned)
-	    clip_lose_selection(&clip_plus);
-
-	clip_init(FALSE);
-	return NULL;
-    }
-    else if (method == clipmethod)
-	return NULL;
-
-    if (clip_star.owned)
-	clip_lose_selection(&clip_star);
-    if (clip_plus.owned)
-	clip_lose_selection(&clip_plus);
-    clipmethod = method;
-
-    return NULL;
+    return choose_clipmethod();
 }
 
     int

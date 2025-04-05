@@ -97,9 +97,10 @@ int vwl_send_requests(void);
 int vwl_dispatch_queue(void);
 int vwl_still_connected(void);
 int vwl_may_restore_connection(int reset);
-int vwl_connect_client(void);
+int vwl_connect_client(char *display);
 void vwl_disconnect_client(void);
 int vwl_connect_clipboard(void);
 void vwl_disconnect_clipboard(void);
 int vwl_data_control_valid(void);
+void ex_wlrestore(exarg_T *eap);
 /* vim: set ft=c : */
