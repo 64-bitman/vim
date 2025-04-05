@@ -118,6 +118,9 @@ static const char *supported_mimes[] = {
     VIM_ATOM_NAME,
     MIME_TEXT_UTF8,
     MIME_TEXT,
+    "UTF8_STRING",
+    "STRING",
+    "TEXT"
 };
 
 #if (defined(FEAT_WAYLAND_CLIPBOARD) && defined(USE_SYSTEM)) || defined(PROTO)
@@ -2471,7 +2474,6 @@ vwl_da_receive_data(Clipboard_T *cbd, int fd)
 	}
     }
 
-    smsg("%d", motion_type);
     clip_yank_selection(motion_type, final, (long)total, cbd);
     vim_free(buf);
 }
