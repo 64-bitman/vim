@@ -29,6 +29,7 @@ jobs:
       LOG_DIR: ${{ github.workspace }}/logs
       TERM: xterm
       DISPLAY: ':99'
+      WAYLAND_DISPLAY: 'wayland-1'
       DEBIAN_FRONTEND: noninteractive
 
     strategy:
@@ -114,6 +115,13 @@ jobs:
         run: |
           # This is added by default, and it is often broken, but we don't need anything from it
           sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+
+          # For building sway and libinput
+          echo 'deb-src http://archive.ubuntu.com/ubuntu noble main' | \
+          sudo tee -a /etc/apt/sources.list
+          echo 'deb-src http://archive.ubuntu.com/ubuntu noble universe' | \
+          sudo tee -a /etc/apt/sources.list
+
           PKGS=( \
             gettext \
             libgtk2.0-dev:${{ matrix.architecture }} \
@@ -143,7 +151,10 @@ jobs:
               libattr1-dev
             )
           fi
+
           sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get install -y "${PKGS[@]}"
+          # For some reason dpkg errors when installing libpango due to a file conflict (for i386)
+          sudo apt-get build-dep -y sway libinput
 
       - name: Install gcc-${{ env.GCC_VER }}
         if:  matrix.compiler == 'gcc'
@@ -232,6 +243,7 @@ jobs:
           sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=0
           sudo usermod -a -G audio "${USER}"
           sudo bash ci/setup-xvfb.sh
+          sudo bash ci/setup-sway.sh
 
       - name: Check autoconf
         if: contains(matrix.extra, 'unittests')
