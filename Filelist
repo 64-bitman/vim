@@ -180,6 +180,8 @@ SRC_ALL =	\
 		src/vim9script.c \
 		src/vim9type.c \
 		src/viminfo.c \
+		src/wayland.c \
+		src/wayland.h \
 		src/winclip.c \
 		src/window.c \
 		src/xxd/xxd.c \
@@ -359,6 +361,7 @@ SRC_ALL =	\
 		src/proto/vim9instr.pro \
 		src/proto/vim9script.pro \
 		src/proto/vim9type.pro \
+		src/proto/wayland.pro \
 		src/proto/viminfo.pro \
 		src/proto/winclip.pro \
 		src/proto/window.pro \
