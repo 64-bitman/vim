@@ -4831,7 +4831,7 @@ typedef enum {
 #define DELETION_REGISTER	36
 #ifdef FEAT_CLIPBOARD
 # define STAR_REGISTER		37
-#  ifdef FEAT_X11
+#  if defined(FEAT_X11) || defined(FEAT_WAYLAND)
 #   define PLUS_REGISTER	38
 #  else
 #   define PLUS_REGISTER	STAR_REGISTER	    // there is only one
