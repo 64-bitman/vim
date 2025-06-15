@@ -1,4 +1,5 @@
 /* vi:set ts=8 sts=4 sw=4 noet:
+ *
  * VIM - Vi IMproved	by Bram Moolenaar
  *
  * Do ":help uganda"  in Vim to read copying and usage conditions.
@@ -29,8 +30,8 @@ typedef struct {
     struct wl_seat  *proxy;
     char	    *label;	    // Name of seat as text (e.g. seat0,
 				    // seat1...).
-    uint32_t	    capabilities;  // Bitmask of the capabilites of the seat
-				   // (pointer, keyboard, touch).
+    uint32_t	    capabilities;   // Bitmask of the capabilites of the seat
+				    // (pointer, keyboard, touch).
 } vwl_seat_T;
 
 // Global objects
@@ -38,20 +39,14 @@ typedef struct {
 #ifdef FEAT_WAYLAND_CLIPBOARD
     // Data control protocols
     struct zwlr_data_control_manager_v1 *zwlr_data_control_manager_v1;
-
     struct ext_data_control_manager_v1	*ext_data_control_manager_v1;
-
     struct wl_data_device_manager	*wl_data_device_manager;
-
     struct wl_shm			*wl_shm;
-
     struct wl_compositor		*wl_compositor;
-
     struct xdg_wm_base			*xdg_wm_base;
-
     struct zwp_primary_selection_device_manager_v1
 	*zwp_primary_selection_device_manager_v1;
-# endif
+#endif
 } vwl_global_objects_T;
 
 // Struct wrapper for wayland display and registry
@@ -719,12 +714,12 @@ vwl_listen_to_registry(void)
     return OK;
 }
 
-#define set_gobject(object, min_ver) \
-    { \
+#define SET_GOBJECT(object, min_ver) \
+    do { \
 	chosen_interface = &object##_interface; \
 	object_member = (void*)&vwl_gobjects.object; \
 	min_version = min_ver; \
-    }
+    } while (0)
 
 /*
  * Callback for global event, for each global interface the compositor supports.
@@ -751,26 +746,26 @@ vwl_registry_listener_global(
     }
 #ifdef FEAT_WAYLAND_CLIPBOARD
     else if (STRCMP(interface, zwlr_data_control_manager_v1_interface.name) == 0)
-	set_gobject(zwlr_data_control_manager_v1, 1)
+	SET_GOBJECT(zwlr_data_control_manager_v1, 1);
 
     else if (STRCMP(interface, ext_data_control_manager_v1_interface.name) == 0)
-	set_gobject(ext_data_control_manager_v1, 1)
+	SET_GOBJECT(ext_data_control_manager_v1, 1);
 
     else if (STRCMP(interface, wl_data_device_manager_interface.name) == 0)
-	set_gobject(wl_data_device_manager, 1)
+	SET_GOBJECT(wl_data_device_manager, 1);
 
     else if (STRCMP(interface, wl_shm_interface.name) == 0)
-	set_gobject(wl_shm, 1)
+	SET_GOBJECT(wl_shm, 1);
 
     else if (STRCMP(interface, wl_compositor_interface.name) == 0)
-	set_gobject(wl_compositor, 2)
+	SET_GOBJECT(wl_compositor, 2);
 
     else if (STRCMP(interface, xdg_wm_base_interface.name) == 0)
-	set_gobject(xdg_wm_base, 1)
+	SET_GOBJECT(xdg_wm_base, 1);
 
     else if (STRCMP(interface,
 		zwp_primary_selection_device_manager_v1_interface.name) == 0)
-	set_gobject(zwp_primary_selection_device_manager_v1, 1)
+	SET_GOBJECT(zwp_primary_selection_device_manager_v1, 1);
 #endif
 
     if (chosen_interface == NULL || version < min_version)
@@ -1297,7 +1292,7 @@ vwl_fs_keyboard_listener_repeat_info(
 }
 
 #define VWL_CODE_DATA_OBJECT_DESTROY(type) \
-{ \
+do { \
     if (type == NULL || type->proxy == NULL) \
 	return; \
     switch (type->protocol) \
@@ -1321,24 +1316,24 @@ vwl_fs_keyboard_listener_repeat_info(
 	vim_free(type); \
     else \
 	type->proxy = NULL; \
-}
+} while (0)
 
     static void
 vwl_data_device_destroy(vwl_data_device_T *device, int alloced)
 {
-    VWL_CODE_DATA_OBJECT_DESTROY(device)
+    VWL_CODE_DATA_OBJECT_DESTROY(device);
 }
 
     static void
 vwl_data_offer_destroy(vwl_data_offer_T *offer, int alloced)
 {
-    VWL_CODE_DATA_OBJECT_DESTROY(offer)
+    VWL_CODE_DATA_OBJECT_DESTROY(offer);
 }
 
     static void
 vwl_data_source_destroy(vwl_data_source_T *source, int alloced)
 {
-    VWL_CODE_DATA_OBJECT_DESTROY(source)
+    VWL_CODE_DATA_OBJECT_DESTROY(source);
 }
 
 
@@ -1560,7 +1555,7 @@ zwp_primary_selection_offer_v1_listener = {
 
 // `type` is also used as the user data
 #define VWL_CODE_DATA_OBJECT_ADD_LISTENER(type) \
-{ \
+do { \
     if (type->proxy == NULL) \
 	return; \
     type->data = data; \
@@ -1585,24 +1580,24 @@ zwp_primary_selection_offer_v1_listener = {
 	default: \
 	    break; \
     } \
-}
+} while (0)
 
     static void
 vwl_data_device_add_listener(vwl_data_device_T *device, void *data)
 {
-    VWL_CODE_DATA_OBJECT_ADD_LISTENER(device)
+    VWL_CODE_DATA_OBJECT_ADD_LISTENER(device);
 }
 
     static void
 vwl_data_source_add_listener(vwl_data_source_T *source, void *data)
 {
-    VWL_CODE_DATA_OBJECT_ADD_LISTENER(source)
+    VWL_CODE_DATA_OBJECT_ADD_LISTENER(source);
 }
 
     static void
 vwl_data_offer_add_listener(vwl_data_offer_T *offer, void *data)
 {
-    VWL_CODE_DATA_OBJECT_ADD_LISTENER(offer)
+    VWL_CODE_DATA_OBJECT_ADD_LISTENER(offer);
 }
 
 /*
@@ -1685,12 +1680,12 @@ vwl_data_offer_receive(vwl_data_offer_T *offer, const char *mime_type, int fd)
     }
 }
 
-#define set_manager(manager_name, protocol_enum, focus) \
-    { \
+#define SET_MANAGER(manager_name, protocol_enum, focus) \
+    do { \
 	manager->proxy = vwl_gobjects.manager_name; \
 	manager->protocol = protocol_enum; \
 	return focus; \
-    } \
+    } while (0)
 
 /*
  * Get a data device manager that supports the given selection. If none if found
@@ -1709,7 +1704,7 @@ vwl_get_data_device_manager(
 
     // Ext data control protocol supports both selections, try it first
     if (vwl_gobjects.ext_data_control_manager_v1 != NULL)
-	set_manager(ext_data_control_manager_v1, VWL_DATA_PROTOCOL_EXT, FALSE)
+	SET_MANAGER(ext_data_control_manager_v1, VWL_DATA_PROTOCOL_EXT, FALSE);
     if (vwl_gobjects.zwlr_data_control_manager_v1 != NULL)
     {
 	int ver = zwlr_data_control_manager_v1_get_version(
@@ -1718,7 +1713,8 @@ vwl_get_data_device_manager(
 	// version 2 or greater supports the primary selection
 	if ((selection == WAYLAND_SELECTION_PRIMARY && ver >= 2)
 		|| selection == WAYLAND_SELECTION_REGULAR)
-	    set_manager(zwlr_data_control_manager_v1, VWL_DATA_PROTOCOL_WLR, FALSE)
+	    SET_MANAGER(zwlr_data_control_manager_v1,
+		    VWL_DATA_PROTOCOL_WLR, FALSE);
     }
 
 focus_steal:
@@ -1726,12 +1722,12 @@ focus_steal:
     {
 	if (vwl_gobjects.wl_data_device_manager != NULL
 		&& selection == WAYLAND_SELECTION_REGULAR)
-	    set_manager(wl_data_device_manager, VWL_DATA_PROTOCOL_CORE, TRUE)
+	    SET_MANAGER(wl_data_device_manager, VWL_DATA_PROTOCOL_CORE, TRUE);
 
 	else if (vwl_gobjects.zwp_primary_selection_device_manager_v1 != NULL
 		&& selection == WAYLAND_SELECTION_PRIMARY)
-	    set_manager(zwp_primary_selection_device_manager_v1,
-		    VWL_DATA_PROTOCOL_PRIMARY, TRUE)
+	    SET_MANAGER(zwp_primary_selection_device_manager_v1,
+		    VWL_DATA_PROTOCOL_PRIMARY, TRUE);
     }
 
     manager->protocol = VWL_DATA_PROTOCOL_NONE;
@@ -2382,7 +2378,7 @@ ex_wlrestore(exarg_T *eap)
 	      STRCMP(wayland_display_name, display) == 0)))
 	return;
 
-# ifdef FEAT_WAYLAND_CLIPBOARD
+#ifdef FEAT_WAYLAND_CLIPBOARD
     if (clipmethod == CLIPMETHOD_WAYLAND)
     {
 	// Lose any selections we own

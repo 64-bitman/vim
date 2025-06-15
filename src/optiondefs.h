@@ -622,14 +622,14 @@ static struct vimoption options[] =
     {"clipmethod", "cpm",   P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
 #ifdef FEAT_CLIPBOARD
 			    (char_u *)&p_cpm, PV_NONE, did_set_clipmethod, expand_set_clipmethod,
-#ifdef UNIX
+# ifdef UNIX
 			    {(char_u *)"wayland,x11", (char_u *)0L}
-#elif VMS
+# elif defined(VMS)
 			    {(char_u *)"x11", (char_u *)0L}
-#else
-			    {(char_u *)"", (char_u *)0L}
-#endif
 # else
+			    {(char_u *)"", (char_u *)0L}
+# endif
+#else
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
 			    {(char_u *)NULL, (char_u *)0L}
 #endif
@@ -2979,7 +2979,7 @@ static struct vimoption options[] =
 #ifdef FEAT_WAYLAND
 			    (char_u *)&p_wse, PV_NONE, did_set_wlseat, NULL,
 			    {(char_u *)"", (char_u *)0L}
-# else
+#else
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
 			    {(char_u *)NULL, (char_u *)0L}
 #endif

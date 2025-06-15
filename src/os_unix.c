@@ -1,4 +1,5 @@
 /* vi:set ts=8 sts=4 sw=4 noet:
+ *
  * VIM - Vi IMproved	by Bram Moolenaar
  *	      OS/2 port by Paul Slootman
  *	      VMS merge by Zoltan Arpadffy
@@ -6540,9 +6541,9 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 			// each channel may use in, out and err
 	struct pollfd   fds[7 + 3 * MAX_OPEN_CHANNELS];
 	int		nfd;
-#ifdef FEAT_WAYLAND_CLIPBOARD
+# ifdef FEAT_WAYLAND_CLIPBOARD
 	int             wayland_idx = -1;
-#endif
+# endif
 # ifdef FEAT_XCLIPBOARD
 	int		xterm_idx = -1;
 # endif
@@ -6574,7 +6575,7 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	    fds[nfd].events = POLLIN;
 	    nfd++;
 	}
-#endif
+# endif
 # ifdef FEAT_XCLIPBOARD
 	may_restore_clipboard();
 	if (xterm_Shell != (Widget)0)
@@ -6603,9 +6604,9 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	    nfd++;
 	}
 # endif
-#ifdef FEAT_JOB_CHANNEL
+# ifdef FEAT_JOB_CHANNEL
 	nfd = channel_poll_setup(nfd, &fds, &towait);
-#endif
+# endif
 	if (interrupted != NULL)
 	    *interrupted = FALSE;
 
@@ -6621,14 +6622,14 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 	    finished = FALSE;
 # endif
 
-#ifdef FEAT_WAYLAND_CLIPBOARD
+# ifdef FEAT_WAYLAND_CLIPBOARD
 	// Technically we should first call wl_display_prepare_read() before
 	// polling the fd, then read and dispatch after we poll. However that is
 	// only needed for multi threaded environments to prevent deadlocks so
 	// we are fine.
 	if (fds[wayland_idx].revents & POLLIN)
 	    wayland_client_update();
-#endif
+# endif
 
 # ifdef FEAT_XCLIPBOARD
 	if (xterm_Shell != (Widget)0 && (fds[xterm_idx].revents & POLLIN))
@@ -6662,11 +6663,11 @@ RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 		finished = FALSE;	// Try again
 	}
 # endif
-#ifdef FEAT_JOB_CHANNEL
+# ifdef FEAT_JOB_CHANNEL
 	// also call when ret == 0, we may be polling a keep-open channel
 	if (ret >= 0)
 	    channel_poll_check(ret, &fds);
-#endif
+# endif
 
 #else // HAVE_SELECT
 
@@ -6719,7 +6720,7 @@ select_eintr:
 	    if (maxfd < wayland_display_fd)
 		maxfd = wayland_display_fd;
 	}
-#endif
+# endif
 
 # ifdef FEAT_XCLIPBOARD
 	may_restore_x11_clipboard();
@@ -6810,14 +6811,14 @@ select_eintr:
 	    finished = FALSE;
 # endif
 
-#ifdef FEAT_WAYLAND_CLIPBOARD
+# ifdef FEAT_WAYLAND_CLIPBOARD
 	// Technically we should first call wl_display_prepare_read() before
 	// polling the fd, then read and dispatch after we poll. However that is
 	// only needed for multi threaded environments to prevent deadlocks so
 	// we are fine.
 	if (ret > 0 && FD_ISSET(wayland_display_fd, &rfds))
 	    wayland_client_update();
-#endif
+# endif
 
 # ifdef FEAT_XCLIPBOARD
 	if (ret > 0 && xterm_Shell != (Widget)0
@@ -6863,11 +6864,11 @@ select_eintr:
 	    }
 	}
 # endif
-#ifdef FEAT_JOB_CHANNEL
+# ifdef FEAT_JOB_CHANNEL
 	// also call when ret == 0, we may be polling a keep-open channel
 	if (ret >= 0)
 	    (void)channel_select_check(ret, &rfds, &wfds);
-#endif
+# endif
 
 #endif // HAVE_SELECT
 
