@@ -50,7 +50,8 @@ Wayland commands:
 			reinitializes the connection using the same value as
 			was used for the previous execution of this command.
 			If the value was never specified, then it uses the
-			value of $WAYLAND_DISPLAY environment variable.
+			value of $WAYLAND_DISPLAY environment variable.  This
+			will also update v:clipmethod.
 			{only available when compiled with the |+wayland| feature}
 
 Wayland errors:
