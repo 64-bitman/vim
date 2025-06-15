@@ -10086,7 +10086,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 	option will still be set to the new value, with the Wayland clipboard
 	being unavailable as a result. If an empty value is passed then Vim
 	will attempt to use the value of $XDG_SEAT if it exists, if not then
-	it resorts to using the first seat found available.
+	it resorts to using the first seat found available. Updating this
+	option will also update |v:clipmethod|.
 
 					*'wlsteal'* *'wst'* *'nowlsteal'* *'nowst'*
 'wlsteal' 'wst'		boolean  (default off)
@@ -10095,14 +10096,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	When enabled, then allow Vim to steal focus by creating a temporary
 	surface, in order to access the clipboard. For more information see
 	|wayland-focus-steal|.
-
-					*'wlstealf'* *'wtf'* *'nowlstealf'* *'nowtf'*
-'wlstealf' 'wtf'	boolean  (default off)
-			global
-			{only when the |+wayland_clipboard| feature is included}
-	Essentially the same as the 'wlsteal' option. However if this option
-	is enabled, then forcibly make Vim steal focus, even if a data control
-	protocol is available.
 
 						*'wltimeoutlen'* *'wtm'*
 'wltimeoutlen' 'wtm'	number	(default 500)

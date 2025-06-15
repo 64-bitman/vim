@@ -39,7 +39,7 @@ Wayland commands:
 			was used for the previous execution of this command.
 			If the value was never specified, then it uses the
 			value of $WAYLAND_DISPLAY environment variable.  This
-			will also update v:clipmethod.
+			will also update |v:clipmethod|.
 			{only available when compiled with the |+wayland| feature}
 
 Wayland errors:
@@ -103,10 +103,9 @@ above explanation applies.
 
 To solve this problem, Vim implements a way of gaining focus in order to
 access the clipboard, by creating a temporary transparent top-level surface.
-This is by default disabled and can be enabled via the 'wlsteal' option, or
-the 'wlstealf' option if you want to forcibly enable it (such as when a data
-control protocol is available).  Moreover, a seat that has a keyboard is also
-required, see 'wlseat', and the xdg-shell protocol must be available.
+This is by default disabled and can be enabled via the 'wlsteal' option.
+Moreover, a seat that has a keyboard is also required, see 'wlseat', and the
+xdg-shell protocol must be available.
 
 Note that this method can have several side effects from the result of focus
 stealing.  For example, if you have a taskbar that shows currently opened apps

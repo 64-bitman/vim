@@ -4725,23 +4725,12 @@ did_set_winwidth(optset_T *args UNUSED)
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 /*
- * Process the new 'wlsteal' or 'wlstealf' option value.
+ * Process the new 'wlsteal' option value.
  */
     char *
 did_set_wlsteal(optset_T *args UNUSED)
 {
-    // If wlstealf is set reset the wayland connection completely in order to
-    // regain the required globals.
-    if ((int*)args->os_varp == &p_wtf)
-    {
-	wayland_uninit_client();
-	wayland_init_client(wayland_display_name);
-	wayland_cb_init((char*)p_wse);
-    }
-    else
-	wayland_cb_reload();
-
-    choose_clipmethod();
+    wayland_cb_reload();
 
     return NULL;
 }

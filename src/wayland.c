@@ -377,10 +377,14 @@ static garray_T			    vwl_seats;
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 // Make sure to sync this with vwl_cb_uninit since it memsets this to zero
-static vwl_clipboard_T		    vwl_clipboard = {
+static vwl_clipboard_T	vwl_clipboard = {
     .regular.selection = WAYLAND_SELECTION_REGULAR,
     .primary.selection = WAYLAND_SELECTION_PRIMARY,
 };
+
+// Only really used for debugging/testing purposes in order to force focus
+// stealing even when a data control protocol is available.
+static int force_fs  = FALSE;
 #endif
 
 /*
@@ -672,6 +676,14 @@ vwl_xdg_wm_base_listener_ping(
     static int
 vwl_listen_to_registry(void)
 {
+    // Only meant for debugging/testing purposes
+    char_u *env = mch_getenv("VIM_WAYLAND_FORCE_FS");
+
+    if (env != NULL && STRCMP(env, "1") == 0)
+	force_fs = TRUE;
+    else
+	force_fs = FALSE;
+
     ga_init2(&vwl_seats, sizeof(vwl_seat_T), 1);
 
     wl_registry_add_listener(
@@ -683,14 +695,14 @@ vwl_listen_to_registry(void)
 	return FAIL;
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
-    // If we have a suitable data control protocol discard the rest, only if
-    // 'wlstealf' is not set. If we only have wlr data control protocol but its
-    // version is 1, then don't discard globals if we also have the primary
-    // selection protocol.
-    if (!p_wtf && (vwl_gobjects.ext_data_control_manager_v1 != NULL ||
-	    (vwl_gobjects.zwlr_data_control_manager_v1 != NULL &&
-	     zwlr_data_control_manager_v1_get_version(
-		 vwl_gobjects.zwlr_data_control_manager_v1) > 1)))
+    // If we have a suitable data control protocol discard the rest. If we only
+    // have wlr data control protocol but its version is 1, then don't discard
+    // globals if we also have the primary selection protocol.
+    if (!force_fs &&
+	    (vwl_gobjects.ext_data_control_manager_v1 != NULL ||
+	     (vwl_gobjects.zwlr_data_control_manager_v1 != NULL &&
+	      zwlr_data_control_manager_v1_get_version(
+		  vwl_gobjects.zwlr_data_control_manager_v1) > 1)))
     {
 	destroy_gobject(wl_data_device_manager)
 	destroy_gobject(wl_shm)
@@ -981,7 +993,8 @@ wayland_client_update(void)
     static int
 vwl_focus_stealing_available(void)
 {
-    return (p_wst || p_wtf) && vwl_gobjects.wl_compositor != NULL &&
+    return (p_wst || force_fs) &&
+	vwl_gobjects.wl_compositor != NULL &&
 	vwl_gobjects.wl_shm != NULL &&
 	vwl_gobjects.xdg_wm_base != NULL;
 }
@@ -1690,9 +1703,8 @@ vwl_get_data_device_manager(
 	wayland_selection_T	    selection)
 {
     // Prioritize data control protocols first then try using the focus steal
-    // method with the core protocol data objects. if 'wlstealf' is set then
-    // only try doing focus stealing.
-    if (p_wtf)
+    // method with the core protocol data objects.
+    if (force_fs)
 	goto focus_steal;
 
     // Ext data control protocol supports both selections, try it first
@@ -2316,6 +2328,7 @@ wayland_cb_reload(void)
     if (wayland_cb_init((char*)p_wse) == FAIL)
 	return FAIL;
 
+    choose_clipmethod();
     return OK;
 }
 

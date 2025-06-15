@@ -442,7 +442,9 @@ func Test_wayland_focus_steal()
   endif
 
   set cpm=wayland
-  set wlstealf
+
+  let $VIM_WAYLAND_FORCE_FS=1
+  wlrestore!
 
   call system('wl-copy regular')
 
@@ -460,7 +462,7 @@ func Test_wayland_focus_steal()
 
   call assert_equal('PRIMARY', system('wl-paste -p -n'))
 
-  set wlstealf&
+  unlet $VIM_WAYLAND_FORCE_FS
 
   let $WAYLAND_DISPLAY_OLD = $WAYLAND_DISPLAY
   let $WAYLAND_DISPLAY = l:old
