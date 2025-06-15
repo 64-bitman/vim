@@ -688,10 +688,7 @@ vim_main2(void)
 
 # ifdef FEAT_WAYLAND_CLIPBOARD
 	    if (wayland_cb_init((char*)p_wse) == OK)
-	    {
 		TIME_MSG("setup wayland clipboard");
-		clip_init(TRUE);
-	    }
 	}
 # endif
     }

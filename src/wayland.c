@@ -1122,6 +1122,8 @@ vwl_init_fs_surface(
 
     if (vwl_gobjects.wl_compositor == NULL || vwl_gobjects.xdg_wm_base == NULL)
 	return FAIL;
+    if (buffer_store == NULL || seat == NULL)
+	return FAIL;
 
     store = alloc_clear(sizeof(*store));
 
@@ -1906,6 +1908,7 @@ wayland_cb_init(const char *seat)
 	wayland_cb_uninit();
 	return FAIL;
     }
+    clip_init(TRUE);
 
     return OK;
 }
@@ -2141,8 +2144,8 @@ wayland_cb_receive_data(const char *mime_type, wayland_selection_T selection)
 }
 
 /*
- * Callback for send event. Just call the user callback which will handle it and
- * do the writing stuff.
+ * Callback for send event. Just call the user callback which will handle it
+ * and do the writing stuff.
  */
     static void
 vwl_data_source_listener_send(

@@ -535,7 +535,7 @@ SRC_UNIX =	\
 		src/gvimtutor \
 		src/wayland.c \
 		src/which.sh \
-		src/gen-wayland-protocols \
+		src/gen-wayland-protocols.sh \
 		src/xxd/Makefile \
 
 # Source files for both MS Windows and Unix-like.

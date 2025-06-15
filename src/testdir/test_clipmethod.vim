@@ -7,9 +7,6 @@ source window_manager.vim
 CheckFeature clipboard_working
 CheckFeature xterm_clipboard
 CheckFeature wayland_clipboard
-CheckFeature clientserver
-CheckXServer
-CheckWaylandCompositor
 
 " Test if no available clipmethod sets v:clipmethod to none and deinits clipboard
 func Test_no_clipmethod_sets_v_clipmethod_none()
@@ -72,16 +69,22 @@ endfunc
 
 " Test if :clipreset switches methods when current one doesn't work
 func Test_clipreset_switches()
-  let [l:display, l:wljob] = Start_wayland_compositor()
+  CheckFeature clientserver
+  CheckXServer
+  CheckWaylandCompositor
+
+  let l:wayland_display = StartWaylandCompositor()
 
   set cpm=wayland,x11
-  exe 'wlrestore ' .. l:display
 
-  call assert_equal(l:display, v:wayland_display)
+  exe 'wlrestore ' .. l:wayland_display
+
+  call assert_equal(l:wayland_display, v:wayland_display)
   call assert_equal("wayland", v:clipmethod)
 
-  call End_wayland_compositor(l:wljob)
-  clipreset
+  call EndWaylandCompositor(l:wayland_display)
+
+  " wlrestore updates clipmethod as well
   wlrestore
 
   call assert_equal("", v:wayland_display)
@@ -91,11 +94,16 @@ func Test_clipreset_switches()
 
   " X11 error handling relies on longjmp magic, but essentially if the X server
   " is killed then it will simply abandon the current commands, making the test
-  " hang. This will only happen for commands given from the command line, which
+  " hang.
+
+  " This will only happen for commands given from the command line, which
   " is why we cannot just directly call Vim or use the actual Vim instance thats
-  " doing all the testing, since main_loop() is never executed. Therefore we
-  " should start a separate Vim instance and communicate with it remotely, so we
-  " can execute the actual testing stuff with main_loop() running.
+  " doing all the testing, since main_loop() is never executed.
+
+  " Therefore we should start a separate Vim instance and communicate with it
+  " remotely, so we can execute the actual testing stuff with main_loop()
+  " running.
+
   let l:lines =<< trim END
     set cpm=x11
     source shared.vim
@@ -122,7 +130,7 @@ func Test_clipreset_switches()
   END
   call writefile(l:lines, 'Xtester', 'D')
 
-  let [l:xdisplay, l:xjob] = Start_X11_server()
+  let l:xdisplay = StartXServer()
 
   let l:name = 'XVIMTEST'
   let l:cmd = GetVimCommand() .. ' -S Xtester --servername ' .. l:name
@@ -136,9 +144,10 @@ func Test_clipreset_switches()
   call remote_send(l:name, ":xrestore " .. l:xdisplay ..
         \ ' | call DoIt()' .. "\<CR>")
 
-  call End_X11_server(l:xjob)
+  call EndXServer(l:xdisplay)
 
   call WaitFor({-> filereadable('Xtest')})
+
   " For some reason readfile sometimes returns an empty list despite the file
   " existing, this why WaitForAssert() is used.
   call WaitForAssert({-> assert_equal(['SUCCESS'], readfile('Xtest'))}, 1000)
