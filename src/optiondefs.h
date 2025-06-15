@@ -3005,7 +3005,7 @@ static struct vimoption options[] =
     {"wltimeoutlen", "wtm", P_NUM|P_VI_DEF,
 #ifdef FEAT_WAYLAND
 			    (char_u *)&p_wtm, PV_NONE, did_set_wltimeoutlen, NULL,
-			    {(char_u *)3000L, (char_u *)0L}
+			    {(char_u *)500L, (char_u *)0L}
 #else
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
 			    {(char_u *)NULL, (char_u *)0L}

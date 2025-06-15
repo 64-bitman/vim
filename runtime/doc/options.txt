@@ -1890,10 +1890,10 @@ A jump table for the options with a short description can be found at |Q_op|.
 		wayland		Wayland selections
 		x11		X11 selections
 
-	Note: This option is ignored and is useless when either the GUI
-	is running or if Vim is run on a system without wayland or X11
-	support, such as Windows or macOS.  The GUI or system way of accessing
-	the clipboard is always used instead.
+	Note: This option is ignored when either the GUI is running or if Vim
+	is run on a system without wayland or X11 support, such as Windows or
+	macOS.  The GUI or system way of accessing the clipboard is always
+	used instead.
 
 	The option value is a list of comma separated items.  The list is parsed
 	left to right in order, and the first method that Vim determines is
@@ -4620,7 +4620,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	|hl-Title|	 t  Titles for output from ":set all", ":autocmd" etc.
 	|hl-VertSplit|	 c  column used to separate vertically split windows
 	|hl-Visual|	 v  Visual mode
-	|hl-VisualNOS|	 V  Visual mode when Vim does is "Not Owning the
+	|hl-VisualNOS|	 V  Visual mode when Vim is "Not Owning the
 			    Selection" Only X11 Gui's |gui-x11|,
 			    |xterm-clipboard| and |wayland-selections|
 	|hl-WarningMsg|	 w  warning messages
@@ -10105,13 +10105,16 @@ A jump table for the options with a short description can be found at |Q_op|.
 	protocol is available.
 
 						*'wltimeoutlen'* *'wtm'*
-'wltimeoutlen' 'wtm'	number	(default 3000)
+'wltimeoutlen' 'wtm'	number	(default 500)
 			global
 			{only when the |+wayland| feature is included}
-	The timeout in milliseconds to be used to determine when Vim times out
-	when polling a file descriptor within the Wayland protocol. This can
-	include, polling the Wayland display file descriptor for events,
-	polling for data to be read, or polling until a fd is writable.
+	The timeout in milliseconds before Vim gives up on waiting for the
+	Wayland compositor.  While Vim waits on the compositor, it is
+	unresponsive to input and does not update the screen.  Therefore
+	setting this to a lower value may make Vim feel more responsive in
+	some cases.  On the other hand, it may also mean you receive errors
+	when the compositor takes more time to respond than usual.
+
 	Additionally, this option is also used as the maximum timeout when
 	waiting for a surface to gain focus, see |wayland-focus-steal|.
 
