@@ -1074,7 +1074,7 @@ vwl_init_buffer_store(int width, int height)
 
     wl_buffer_add_listener(store->buffer, &vwl_cb_buffer_listener, store);
 
-    if (vwl_display_dispatch(&vwl_display) == -1)
+    if (vwl_display_roundtrip(&vwl_display) == -1)
     {
 	vwl_destroy_buffer_store(store);
 	return NULL;
