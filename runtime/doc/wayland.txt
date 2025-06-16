@@ -33,8 +33,7 @@ Wayland commands:
 
 			[display] should be in the format of the
 			$WAYLAND_DISPLAY environment variable (e.g.
-			"wayland-0"), see |wayland-connection| for more
-			details.  If [display] is omitted, then it
+			"wayland-0"). If [display] is omitted, then it
 			reinitializes the connection using the same value as
 			was used for the previous execution of this command.
 			If the value was never specified, then it uses the
@@ -46,7 +45,7 @@ Wayland errors:
 							*E1548*
 Vim failed communicating with the wayland compositor.  This is likely due to
 the Wayland compositor process being killed.  Try the `:wlrestore` command to
-try connecting again.  See |wayland-connection| for more details.
+try connecting again.
 
 ==============================================================================
 2. Wayland Selections					*wayland-selections*
@@ -113,6 +112,6 @@ in your desktop environment, then when Vim attempts to steal focus, it may
 "flicker," as if a window was opened then immediately closed after.
 Additionally, if you are in fullscreen mode, this focus stealing won't work,
 because the created surface won't ever gain focus.  If this happens, Vim will
-seem to freeze temporarily, see |wltimeoutlen|.
+seem to freeze temporarily, see |wltimeoutlen| for more information.
 
  vim:tw=78:sw=4:ts=8:noet:ft=help:norl:js

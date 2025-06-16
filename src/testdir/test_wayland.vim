@@ -14,12 +14,21 @@ endif
 
 " Process will be killed when the test ends
 let s:global_wayland_display = StartWaylandCompositor()
-let $WAYLAND_DISPLAY_OLD=$WAYLAND_DISPLAY
-let $WAYLAND_DISPLAY = s:global_wayland_display
-exe 'wlrestore ' .. $WAYLAND_DISPLAY
+let s:old_wayland_display = $WAYLAND_DISPLAY
+
+" For some reason if $WAYLAND_DISPLAY is set in the global namespace (not in a
+" function), it won't actually be set if $WAYLAND_DISPLAY was not set before
+" (such as in a CI environment) ? Solution is to just set it before the code of
+" every test function
+func s:PreTest()
+  let $WAYLAND_DISPLAY=s:global_wayland_display
+  exe 'wlrestore ' .. $WAYLAND_DISPLAY
+
+  set cpm=wayland
+endfunc
 
 func Test_wayland_startup()
-  set cpm=wayland
+  call s:PreTest()
 
   let l:name = 'WLVIMTEST'
   let l:cmd = GetVimCommand() .. ' --servername ' .. l:name
@@ -52,7 +61,7 @@ func Test_wayland_startup()
 endfunc
 
 func Test_wayland_wlrestore()
-  set cpm=wayland
+  call s:PreTest()
 
   let l:wayland_display = StartWaylandCompositor()
   let l:env_cmd = 'WAYLAND_DISPLAY=' .. l:wayland_display .. ' '
@@ -95,12 +104,11 @@ func Test_wayland_wlrestore()
   call assert_notmatch('_VIM_TEXT', system(l:env_cmd .. 'wl-paste -l'))
 
   call EndWaylandCompositor(l:wayland_display)
-  exe 'wlrestore ' .. $WAYLAND_DISPLAY
 endfunc
 
 " Test behaviour when wayland display connection is lost
 func Test_wayland_connection_lost()
-  set cpm=wayland
+  call s:PreTest()
 
   let l:wayland_display = StartWaylandCompositor()
   let l:env_cmd = 'WAYLAND_DISPLAY=' .. l:wayland_display .. ' '
@@ -120,13 +128,11 @@ func Test_wayland_connection_lost()
 
   " v:wayland_display should automatically be set to an empty string
   call assert_equal('', v:wayland_display)
-
-  exe 'wlrestore ' .. $WAYLAND_DISPLAY
 endfunc
 
 " Basic paste tests
 func Test_wayland_paste()
-  set cpm=wayland
+  call s:PreTest()
 
   " Prevent 'Register changed while using it' error, guessing this works because
   " it makes Vim lose the selection?
@@ -168,7 +174,7 @@ endfunc
 
 " Check if correct mime types are advertised when we own the selection
 func Test_wayland_mime_types_correct()
-  set cpm=wayland
+  call s:PreTest()
 
   let l:mimes = [
         \ '_VIMENC_TEXT',
@@ -201,7 +207,7 @@ endfunc
 " _VIM_TEXT: preserves motion type (line/char/block wise)
 " _VIMENC_TEXT: same but also indicates the encoding type
 func Test_wayland_paste_vim_format_correct()
-  set cpm=wayland
+  call s:PreTest()
 
   " Vim doesn't support null characters in strings, so we use the -v flag of the
   " cat program to show them in a printable way, if it is available.
@@ -252,8 +258,8 @@ endfunc
 
 " Test checking if * and + registers are not the same
 func Test_wayland_plus_star_not_same()
+  call s:PreTest()
   new
-  set cpm=wayland
 
   call system('wl-copy "regular"')
   call system('wl-copy -p "primary"')
@@ -271,7 +277,7 @@ endfunc
 
 " Test if autoselect option in 'clipboard' works properly for wayland
 func Test_wayland_autoselect_works()
-  set cpm=wayland
+  call s:PreTest()
 
   let l:lines =<< trim END
   set cpm=wayland
@@ -327,7 +333,7 @@ endfunc
 
 " Check if the -Y flag works properly
 func Test_no_wayland_connect_cmd_flag()
-  set cpm=wayland
+  call s:PreTest()
 
   let l:name = 'WLFLAGVIMTEST'
   let l:cmd = GetVimCommand() .. ' -Y --servername ' .. l:name
@@ -364,7 +370,7 @@ endfunc
 
 " Test if selection is disowned when we do something like suspend Vim
 func Test_wayland_lose_selection()
-  set cpm=wayland
+  call s:PreTest()
 
   let l:name = 'WLLOSEVIMTEST'
   let l:cmd = GetVimCommand() .. ' --servername ' .. l:name
@@ -399,7 +405,7 @@ endfunc
 
 " Test wlseat option
 func Test_wayland_seat()
-  set cpm=wayland
+  call s:PreTest()
 
   " Don't know a way to create a virtual seat so just test using the existing
   " one only
@@ -425,14 +431,15 @@ endfunc
 
 " Test focus stealing
 func Test_wayland_focus_steal()
+  call s:PreTest()
+
   if !executable('wayland-info')
     throw "Skipped: wayland-info program not available"
   endif
 
   " Starting a headless compositor won't expose a keyboard capability for its
   " seat, so we must use the user's existing Wayland session if they are in one.
-  let l:old = $WAYLAND_DISPLAY
-  let $WAYLAND_DISPLAY = $WAYLAND_DISPLAY_OLD
+  let $WAYLAND_DISPLAY = s:old_wayland_display
 
   exe 'wlrestore ' .. $WAYLAND_DISPLAY
 
@@ -463,10 +470,6 @@ func Test_wayland_focus_steal()
   call assert_equal('PRIMARY', system('wl-paste -p -n'))
 
   unlet $VIM_WAYLAND_FORCE_FS
-
-  let $WAYLAND_DISPLAY_OLD = $WAYLAND_DISPLAY
-  let $WAYLAND_DISPLAY = l:old
-  exe 'wlrestore ' .. $WAYLAND_DISPLAY
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab
