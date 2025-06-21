@@ -1623,8 +1623,14 @@ EXTRA_SRC = if_lua.c if_mzsch.c auto/if_perl.c if_perlsfio.c \
 	    gui_beval.c netbeans.c job.c channel.c \
 	    $(GRESOURCE_SRC)
 
-$(WAYLAND_SRC) $(WAYLAND_SRC:.c=.h):
+$(WAYLAND_SRC):
 	cd auto/wayland; $(MAKE)
+
+# Needed for parallel jobs to work
+auto/wayland/ext-data-control-v1.h: auto/wayland/ext-data-control-v1.c
+auto/wayland/wlr-data-control-unstable-v1.h: auto/wayland/wlr-data-control-unstable-v1.c
+auto/wayland/primary-selection-unstable-v1.h: auto/wayland/primary-selection-unstable-v1.c
+auto/wayland/xdg-shell.h: auto/wayland/xdg-shell.c
 
 # Unittest files
 JSON_TEST_SRC = json_test.c
