@@ -12,6 +12,9 @@
 /* Define unless no Wayland support found */
 #undef HAVE_WAYLAND
 
+/* Define unless GIO library not found */
+#undef HAVE_GIO
+
 /* Define when terminfo support found */
 #undef TERMINFO
 

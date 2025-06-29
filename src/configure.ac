@@ -2889,6 +2889,62 @@ if test -z "$PKG_CONFIG"; then
   AC_PATH_TOOL(PKG_CONFIG, pkg-config, no)
 fi
 
+AC_MSG_CHECKING(--with-gio2 argument)
+AC_ARG_WITH(gio2,
+	[  --with-gio2		  Include support for the GIO library.])
+
+with_gio2_auto=no
+
+test -z "$with_gio2" && with_gio2_auto=yes
+
+if test "$with_gio2" = "yes" -o "$with_gio2_auto" = "yes"; then
+  AC_MSG_RESULT(yes)
+
+  if test "$PKG_CONFIG" != "no"; then
+    AC_MSG_CHECKING([for pkg-config gio-2.0])
+
+    if "$PKG_CONFIG" --exists gio-2.0; then
+      AC_MSG_RESULT(found)
+
+      GIO_CFLAGS=`$PKG_CONFIG --cflags gio-2.0`
+      GIO_LIBDIR=`$PKG_CONFIG --libs-only-L gio-2.0`
+      GIO_LIBS=`$PKG_CONFIG --libs gio-2.0`
+
+      AC_MSG_CHECKING(if GIO header files can be found)
+
+      cflags_save=$CFLAGS
+      CFLAGS="$CFLAGS $GIO_CFLAGS $GIO_LIBDIR $GIO_LIBS"
+
+      AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <gio/gio.h>], )],
+      AC_MSG_RESULT(yes); no_gio=no,
+      AC_MSG_RESULT(no); no_gio=yes)
+
+      CFLAGS=$cflags_save
+
+      if test "$no_gio" = "yes" -a "$with_gio2_auto" = "no"; then
+	AC_MSG_ERROR([GIO header files not found])
+      fi
+
+      AC_SUBST(GIO_CFLAGS)
+      AC_SUBST(GIO_LIBDIR)
+      AC_SUBST(GIO_LIBS)
+      AC_DEFINE(HAVE_GIO)
+    else
+      if "$with_gio2_auto" =  "yes"; then
+	AC_MSG_RESULT(not found)
+      else
+	AC_MSG_ERROR([not found, please install pkg-config files])
+      fi
+    fi
+  else
+    if "$with_gio2_auto" =  "yes"; then
+      AC_MSG_RESULT(no, pkg-config not available)
+    else
+      AC_MSG_ERROR([no, pkg-config not available, please install])
+    fi
+  fi
+fi
+
 dnl ---------------------------------------------------------------------------
 dnl Check for GTK3. If it succeeds, skip the check for GTK2.
 dnl ---------------------------------------------------------------------------

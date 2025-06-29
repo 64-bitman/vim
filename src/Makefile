@@ -613,7 +613,7 @@ CClink = $(CC)
 # Add -Wpedantic to find // comments and other C99 constructs.
 # Better disable Perl and Python to avoid a lot of warnings.
 #CFLAGS = -g -Wall -Wextra -Wshadow -Wmissing-prototypes -Wpedantic -Wunreachable-code -Wunused-result -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=1
-#CFLAGS = -g -O2 -Wall -Wextra -Wshadow -Wmissing-prototypes -Wpedantic -Wunreachable-code -Wno-cast-function-type -Wunused-result -Wno-deprecated-declarations -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=1
+CFLAGS = -g -O2 -Wall -Wextra -Wshadow -Wmissing-prototypes -Wpedantic -Wunreachable-code -Wno-cast-function-type -Wunused-result -Wno-deprecated-declarations -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=1
 #PYTHON_CFLAGS_EXTRA = -Wno-missing-field-initializers
 #MZSCHEME_CFLAGS_EXTRA = -Wno-unreachable-code -Wno-unused-parameter
 
@@ -1104,7 +1104,7 @@ INSTALL_DATA	= cp
 INSTALL_DATA_R	= cp -r
 
 ### Program to run on installed binary.  Use the second one to disable strip.
-#STRIP = strip
+STRIP = strip
 #STRIP = /bin/true
 
 ### Permissions for binaries  {{{1
@@ -1377,7 +1377,7 @@ MKDIR_P = $(SHELL) install-sh -c -d
 VTERM_CFLAGS = -Ilibvterm/include
 
 PRE_DEFS = -Iproto $(DEFS) $(GUI_DEFS) $(GUI_IPATH) $(CPPFLAGS) $(EXTRA_IPATHS)
-POST_DEFS = $(X_CFLAGS) $(MZSCHEME_CFLAGS) $(EXTRA_DEFS)
+POST_DEFS = $(X_CFLAGS) $(MZSCHEME_CFLAGS) $(EXTRA_DEFS) $(GIO_CFLAGS)
 
 ALL_CFLAGS = $(PRE_DEFS) $(CFLAGS) $(PROFILE_CFLAGS) $(SANITIZER_CFLAGS) $(LEAK_CFLAGS) $(ABORT_CFLAGS) $(POST_DEFS)
 
@@ -1397,11 +1397,12 @@ DEPEND_CFLAGS = -DPROTO -DDEPEND -DFEAT_GUI $(LINT_CFLAGS)
 
 # Note: MZSCHEME_LIBS must come before LIBS, because LIBS adds -lm which is
 # needed by racket.
-ALL_LIB_DIRS = $(GUI_LIBS_DIR) $(X_LIBS_DIR)
+ALL_LIB_DIRS = $(GUI_LIBS_DIR) $(X_LIBS_DIR) $(GIO_LIBDIR)
 ALL_LIBS = \
 	   $(GUI_LIBS1) \
 	   $(GUI_X_LIBS) \
 	   $(GUI_LIBS2) \
+	   $(GIO_LIBS) \
 	   $(X_PRE_LIBS) \
 	   $(X_LIBS) \
 	   $(WAYLAND_LIBS) \
@@ -1604,6 +1605,7 @@ BASIC_SRC = \
 	viminfo.c \
 	window.c \
 	bufwrite.c \
+	giocmdsrc.c \
 	$(OS_EXTRA_SRC)
 
 SRC =	$(BASIC_SRC) \
@@ -1777,6 +1779,7 @@ OBJ_COMMON = \
 	objects/viminfo.o \
 	objects/window.o \
 	objects/bufwrite.o \
+	objects/giocmdsrv.o \
 	$(GUI_OBJ) \
 	$(TERM_OBJ) \
 	$(LUA_OBJ) \
@@ -3075,7 +3078,7 @@ mdepend:
 	    sed -e 's/.*"\.\/\(.*\)".*/\1/'\
 	    ` >> tmp_make ; \
 	done
-	mv tmp_make Makefile
+	# mv tmp_make Makefile
 
 depend:
 	-@rm -f Makefile~
@@ -3090,7 +3093,7 @@ depend:
 	-for i in $(XDIFF_SRC); do echo $$i; \
 		$(CPP_DEPEND) $$i | \
 		sed -e 's+^\([^ ]*\.o\)+objects/\1+' -e 's+xdiff/\.\./++g' >> tmp_make; done
-	mv tmp_make Makefile
+	# mv tmp_make Makefile
 
 # Run lint.  Clean up the *.ln files that are sometimes left behind.
 lint:
@@ -3664,6 +3667,9 @@ objects/netbeans.o: netbeans.c
 
 objects/channel.o: channel.c
 	$(CCC) -o $@ channel.c
+
+objects/giocmdsrv.o: giocmdsrv.c
+	$(CCC) -o $@ giocmdsrv.c
 
 # Dependencies that "make depend" doesn't find
 objects/gui_gtk_x11.o: version.h

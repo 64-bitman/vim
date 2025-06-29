@@ -949,7 +949,7 @@
  * +clientserver	Remote control via the remote_send() function
  *			and the --remote argument
  */
-#if (defined(MSWIN) || defined(FEAT_XCLIPBOARD)) && defined(FEAT_EVAL)
+#if (defined(MSWIN) || (defined(FEAT_XCLIPBOARD)) || defined(HAVE_GIO)) && defined(FEAT_EVAL)
 # define FEAT_CLIENTSERVER
 #endif
 

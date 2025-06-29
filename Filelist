@@ -184,6 +184,7 @@ SRC_ALL =	\
 		src/winclip.c \
 		src/window.c \
 		src/xxd/xxd.c \
+		src/giocmdsrv.c \
 		src/testdir/gen_opt_test.vim \
 		src/testdir/README.txt \
 		src/testdir/Make_all.mak \
