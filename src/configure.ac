@@ -2408,12 +2408,10 @@ test -z "$with_wayland" && with_wayland=yes
 if test "$with_wayland" = yes; then
   AC_MSG_RESULT(yes)
   AC_MSG_CHECKING(if Wayland client header files can be found)
-  cppflags_save=$CPPFLAGS
-  CPPFLAGS="$CPPFLAGS $X_CFLAGS"
+
   AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <wayland-client.h>], )],
 	AC_MSG_RESULT(yes),
 	AC_MSG_RESULT(no); no_wl=yes)
-  CPPFLAGS=$cppflags_save
 
   if test "$no_wl" = yes; then
     with_wayland=no
@@ -2422,22 +2420,47 @@ if test "$with_wayland" = yes; then
 
     if test "$no_wl" = no; then
       AC_DEFINE(HAVE_WAYLAND)
+
+    if test "$PKG_CONFIG" != "no"; then
+      AC_MSG_CHECKING([for pkg-config wayland-client])
+
+      AS_IF(["$PKG_CONFIG" --exists wayland-client],
+	    [
+	     AC_MSG_RESULT(found)
+	     WAYLAND_CFLAGS=`$PKG_CONFIG --cflags $gtk_pkg_name`
+	     WAYLAND_LIBDIR=`$PKG_CONFIG --libs-only-L $gtk_pkg_name`
+	     WAYLAND_LIBS=`$PKG_CONFIG --libs $gtk_pkg_name`
+	     ],
+	     [
+	      WAYLAND_CFLAGS=""
+	      WAYLAND_LIBDIR=""
+	      WAYLAND_LIBS=""
+	      AC_MSG_RESULT([no; consider installing the Wayland -dev package])
+	    ])
+    else
+      WAYLAND_CFLAGS=""
+      WAYLAND_LIBDIR=""
       WAYLAND_LIBS="-lwayland-client";
-      AC_SUBST(WAYLAND_LIBS)
-      WAYLAND_SRC=" \
-	      auto/wayland/wlr-data-control-unstable-v1.c \
-	      auto/wayland/ext-data-control-v1.c \
-	      auto/wayland/xdg-shell.c \
-	      auto/wayland/primary-selection-unstable-v1.c \
-	      wayland.c"
-      AC_SUBST(WAYLAND_SRC)
-      WAYLAND_OBJ=" \
-	      objects/wlr-data-control-unstable-v1.o \
-	      objects/ext-data-control-v1.o \
-	      objects/xdg-shell.o \
-	      objects/primary-selection-unstable-v1.o \
-	      objects/wayland.o"
-      AC_SUBST(WAYLAND_OBJ)
+    fi
+
+    AC_SUBST(WAYLAND_CFLAGS)
+    AC_SUBST(WAYLAND_LIBDIR)
+    AC_SUBST(WAYLAND_LIBSS)
+
+    WAYLAND_SRC=" \
+      auto/wayland/wlr-data-control-unstable-v1.c \
+      auto/wayland/ext-data-control-v1.c \
+      auto/wayland/xdg-shell.c \
+      auto/wayland/primary-selection-unstable-v1.c \
+      wayland.c"
+    AC_SUBST(WAYLAND_SRC)
+    WAYLAND_OBJ=" \
+      objects/wlr-data-control-unstable-v1.o \
+      objects/ext-data-control-v1.o \
+      objects/xdg-shell.o \
+      objects/primary-selection-unstable-v1.o \
+      objects/wayland.o"
+    AC_SUBST(WAYLAND_OBJ)
 
     else
       with_wayland=no

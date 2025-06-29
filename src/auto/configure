@@ -678,7 +678,9 @@ XMKMF
 xmkmfpath
 WAYLAND_OBJ
 WAYLAND_SRC
-WAYLAND_LIBS
+WAYLAND_LIBSS
+WAYLAND_LIBDIR
+WAYLAND_CFLAGS
 TERM_TEST
 TERM_OBJ
 TERM_SRC
@@ -9109,8 +9111,7 @@ if test "$with_wayland" = yes; then
 printf "%s\n" "yes" >&6; }
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking if Wayland client header files can be found" >&5
 printf %s "checking if Wayland client header files can be found... " >&6; }
-  cppflags_save=$CPPFLAGS
-  CPPFLAGS="$CPPFLAGS $X_CFLAGS"
+
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <wayland-client.h>
@@ -9132,7 +9133,6 @@ printf "%s\n" "no" >&6; }; no_wl=yes ;;
 esac
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
-  CPPFLAGS=$cppflags_save
 
   if test "$no_wl" = yes; then
     with_wayland=no
@@ -9189,21 +9189,53 @@ fi
     if test "$no_wl" = no; then
       printf "%s\n" "#define HAVE_WAYLAND 1" >>confdefs.h
 
+
+    if test "$PKG_CONFIG" != "no"; then
+      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for pkg-config wayland-client" >&5
+printf %s "checking for pkg-config wayland-client... " >&6; }
+
+      if "$PKG_CONFIG" --exists wayland-client
+then :
+
+	     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found" >&5
+printf "%s\n" "found" >&6; }
+	     WAYLAND_CFLAGS=`$PKG_CONFIG --cflags $gtk_pkg_name`
+	     WAYLAND_LIBDIR=`$PKG_CONFIG --libs-only-L $gtk_pkg_name`
+	     WAYLAND_LIBS=`$PKG_CONFIG --libs $gtk_pkg_name`
+
+else case e in #(
+  e)
+	      WAYLAND_CFLAGS=""
+	      WAYLAND_LIBDIR=""
+	      WAYLAND_LIBS=""
+	      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no; consider installing the Wayland -dev package" >&5
+printf "%s\n" "no; consider installing the Wayland -dev package" >&6; }
+	     ;;
+esac
+fi
+    else
+      WAYLAND_CFLAGS=""
+      WAYLAND_LIBDIR=""
       WAYLAND_LIBS="-lwayland-client";
+    fi
 
-      WAYLAND_SRC=" \
-	      auto/wayland/wlr-data-control-unstable-v1.c \
-	      auto/wayland/ext-data-control-v1.c \
-	      auto/wayland/xdg-shell.c \
-	      auto/wayland/primary-selection-unstable-v1.c \
-	      wayland.c"
 
-      WAYLAND_OBJ=" \
-	      objects/wlr-data-control-unstable-v1.o \
-	      objects/ext-data-control-v1.o \
-	      objects/xdg-shell.o \
-	      objects/primary-selection-unstable-v1.o \
-	      objects/wayland.o"
+
+
+
+    WAYLAND_SRC=" \
+      auto/wayland/wlr-data-control-unstable-v1.c \
+      auto/wayland/ext-data-control-v1.c \
+      auto/wayland/xdg-shell.c \
+      auto/wayland/primary-selection-unstable-v1.c \
+      wayland.c"
+
+    WAYLAND_OBJ=" \
+      objects/wlr-data-control-unstable-v1.o \
+      objects/ext-data-control-v1.o \
+      objects/xdg-shell.o \
+      objects/primary-selection-unstable-v1.o \
+      objects/wayland.o"
 
 
     else
