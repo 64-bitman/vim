@@ -992,6 +992,9 @@ f_remote_startserver(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
     }
 
     char_u *server = tv_get_string_chk(&argvars[0]);
+
+    vgio_setup_socket_service(server);
+    return;
 # ifdef FEAT_X11
     if (check_connection() == OK)
 	serverRegisterName(X_DISPLAY, server);

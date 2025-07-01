@@ -324,6 +324,9 @@ extern char_u *vimpty_getenv(const char_u *string);	// in misc2.c
 # if defined(FEAT_CLIENTSERVER) && defined(FEAT_X11)
 #  include "if_xcmdsrv.pro"
 # endif
+# if defined(FEAT_CLIENTSERVER) && defined(HAVE_GIO)
+#  include "giocmdsrv.pro"
+# endif
 
 /*
  * The perl include files pollute the namespace, therefore proto.h must be

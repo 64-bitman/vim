@@ -3736,3 +3736,9 @@ EXTERN char e_cannot_not_support_redrawtabpanel[]
 EXTERN char e_wayland_connection_unavailable[]
 	INIT(= N_("E1548: Wayland connection is unavailable"));
 #endif
+#if defined(FEAT_CLIENTSERVER) && defined(HAVE_GIO) && defined(UNIX)
+EXTERN char e_no_socket_dir_available[]
+	INIT(= N_("E1549: No socket directory is available"));
+EXTERN char e_socket_path_already_exists[]
+	INIT(= N_("E1550: Socket path already exists"));
+#endif

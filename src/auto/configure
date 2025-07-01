@@ -10717,9 +10717,9 @@ printf %s "checking for pkg-config gio-2.0... " >&6; }
       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found" >&5
 printf "%s\n" "found" >&6; }
 
-      GIO_CFLAGS=`$PKG_CONFIG --cflags gio-2.0`
-      GIO_LIBDIR=`$PKG_CONFIG --libs-only-L gio-2.0`
-      GIO_LIBS=`$PKG_CONFIG --libs gio-2.0`
+      GIO_CFLAGS=`$PKG_CONFIG --cflags gio-2.0 gio-unix-2.0`
+      GIO_LIBDIR=`$PKG_CONFIG --libs-only-L gio-2.0 gio-unix-2.0`
+      GIO_LIBS=`$PKG_CONFIG --libs gio-2.0 gio-unix-2.0`
 
       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking if GIO header files can be found" >&5
 printf %s "checking if GIO header files can be found... " >&6; }

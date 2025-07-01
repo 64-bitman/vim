@@ -3643,6 +3643,12 @@ expand_set_scrollopt(optexpand_T *args, int *numMatches, char_u ***matches)
 	    matches);
 }
 
+    char *
+did_set_socketdirs(optset_T *args UNUSED)
+{
+
+}
+
 /*
  * The 'wlseat' option is changed
  */

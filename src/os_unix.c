@@ -3652,6 +3652,9 @@ mch_exit(int r)
 #if defined(FEAT_X11) && defined(FEAT_CLIPBOARD)
     x11_export_final_selection();
 #endif
+#if defined (FEAT_CLIENTSERVER) && defined(HAVE_GIO)
+    vgio_takedown_socket_service();
+#endif
 
 #ifdef FEAT_GUI
     if (!gui.in_use)

@@ -2419,6 +2419,16 @@ static struct vimoption options[] =
     {"smoothscroll", "sms", P_BOOL|P_VI_DEF|P_RWIN,
 			    (char_u *)VAR_WIN, PV_SMS, did_set_smoothscroll, NULL,
 			    {(char_u *)FALSE, (char_u *)0L} SCTX_INIT},
+    {"socketdirs", "sd",    P_STRING|P_VI_DEF|P_EXPAND|P_ONECOMMA|P_NODUP
+								    |P_SECURE,
+#if defined(FEAT_CLIENTSERVER) && defined(HAVE_GIO) && defined(UNIX)
+			    (char_u *)&p_sd, PV_NONE, NULL, NULL,
+			    {(char_u *)DFLT_SOCKETDIRS, (char_u *)0L}
+#else
+			    (char_u *)NULL, PV_NONE, NULL, NULL,
+			    {(char_u *)0L, (char_u *)0L}
+#endif
+			    SCTX_INIT},
     {"softtabstop", "sts",  P_NUM|P_VI_DEF|P_VIM,
 			    (char_u *)&p_sts, PV_STS, NULL, NULL,
 			    {(char_u *)0L, (char_u *)0L} SCTX_INIT},

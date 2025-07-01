@@ -489,3 +489,6 @@ int mch_rename(const char *src, const char *dest);
 // We have three kinds of ACL support.
 #define HAVE_ACL (HAVE_POSIX_ACL || HAVE_SOLARIS_ACL || HAVE_AIX_ACL)
 
+#if defined(FEAT_CLIENTSERVER) && defined(HAVE_GIO) && defined(UNIX)
+# define DFLT_SOCKETDIRS "$XDG_RUNTIME_DIR/vim,/tmp/vim"
+#endif

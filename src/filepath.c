@@ -1446,12 +1446,13 @@ f_isabsolutepath(typval_T *argvars, typval_T *rettv)
 /*
  * Create the directory in which "dir" is located, and higher levels when
  * needed.
+ * If "quiet" is TRUE then don't emit error messages at all.
  * Set "created" to the full name of the first created directory.  It will be
  * NULL until that happens.
  * Return OK or FAIL.
  */
     static int
-mkdir_recurse(char_u *dir, int prot, char_u **created)
+mkdir_recurse(char_u *dir, int prot, char_u **created, int quiet)
 {
     char_u	*p;
     char_u	*updir;
@@ -1469,14 +1470,37 @@ mkdir_recurse(char_u *dir, int prot, char_u **created)
 	return FAIL;
     if (mch_isdir(updir))
 	r = OK;
-    else if (mkdir_recurse(updir, prot, created) == OK)
+    else if (mkdir_recurse(updir, prot, created, quiet) == OK)
     {
-	r = vim_mkdir_emsg(updir, prot);
+	if (quiet)
+	    r = vim_mkdir(updir, prot) == 0 ? OK : FAIL;
+	else
+	    r = vim_mkdir_emsg(updir, prot);
+
 	if (r == OK && created != NULL && *created == NULL)
 	    *created = FullName_save(updir, FALSE);
     }
     vim_free(updir);
     return r;
+}
+
+/*
+ * Create "directory" and any of its parent directories as needed. Returns OK on
+ * success or FAIL on failure. Does not return FAIL if any directory exists in
+ * the pathname already.
+ */
+int
+vim_mkdir_parents(char_u *dir, int prot)
+{
+    if (mkdir_recurse(dir, prot, NULL, TRUE) == FAIL)
+	return FAIL;
+
+    errno = 0;
+    int ret = vim_mkdir(dir, prot);
+
+    if (ret == 0 || (ret != 0 && errno == EEXIST))
+	return OK;
+    return FAIL;
 }
 
 /*
@@ -1535,7 +1559,8 @@ f_mkdir(typval_T *argvars, typval_T *rettv)
 		rettv->vval.v_number = OK;
 		return;
 	    }
-	    mkdir_recurse(dir, prot, defer || defer_recurse ? &created : NULL);
+	    mkdir_recurse(dir, prot,
+		    defer || defer_recurse ? &created : NULL, FALSE);
 	}
     }
     rettv->vval.v_number = vim_mkdir_emsg(dir, prot);

@@ -2906,9 +2906,9 @@ if test "$with_gio2" = "yes" -o "$with_gio2_auto" = "yes"; then
     if "$PKG_CONFIG" --exists gio-2.0; then
       AC_MSG_RESULT(found)
 
-      GIO_CFLAGS=`$PKG_CONFIG --cflags gio-2.0`
-      GIO_LIBDIR=`$PKG_CONFIG --libs-only-L gio-2.0`
-      GIO_LIBS=`$PKG_CONFIG --libs gio-2.0`
+      GIO_CFLAGS=`$PKG_CONFIG --cflags gio-2.0 gio-unix-2.0`
+      GIO_LIBDIR=`$PKG_CONFIG --libs-only-L gio-2.0 gio-unix-2.0`
+      GIO_LIBS=`$PKG_CONFIG --libs gio-2.0 gio-unix-2.0`
 
       AC_MSG_CHECKING(if GIO header files can be found)
 
