@@ -231,7 +231,7 @@ exec_on_server(mparm_T *parmp)
     void
 prepare_server(mparm_T *parmp)
 {
-# if defined(FEAT_X11)
+# if defined(FEAT_X11) || defined(FEAT_SOCKETSERVER)
     /*
      * Register for remote command execution with :serversend and --remote
      * unless there was a -X or a --servername '' on the command line.
@@ -254,9 +254,35 @@ prepare_server(mparm_T *parmp)
 #  endif
 		parmp->serverName_arg != NULL))
     {
+#ifdef FEAT_SOCKETSERVER
+	// If server name starts with a '/', take it as an absolute path for the
+	// socket, else register the socket at a common path.
+	if (parmp->servername[0] == '/')
+	    socket_server_init(parmp->serverName_arg, FALSE);
+	else
+	{
+	    char_u *path = alloc(
+		    STRLEN(parmp->servername) +
+		    STRLEN(SOCKET_SERVER_DEF_PATH"/") + 1);
+
+	    if (path != NULL)
+	    {
+		sprintf((char *)path, SOCKET_SERVER_DEF_PATH"/%s",
+			parmp->servername);
+
+		errno = 0;
+		if (vim_mkdir(SOCKET_SERVER_DEF_PATH, 0755) >= 0 ||
+			errno == EEXIST)
+		    socket_server_init(path, TRUE);
+
+		vim_free(path);
+	    }
+	}
+#elif defined(FEAT_X11)
 	(void)serverRegisterName(X_DISPLAY, parmp->servername);
-	vim_free(parmp->servername);
 	TIME_MSG("register server name");
+#endif
+	vim_free(parmp->servername);
     }
     else
 	serverDelayedStartName = parmp->servername;
@@ -384,7 +410,11 @@ cmdsrv_main(
 		}
 		Argc = i;
 	    }
-# ifdef FEAT_X11
+
+#ifdef FEAT_SOCKETSERVER
+	    ret = socket_server_send(
+		    serverName_arg, *serverStr, NULL, 0, 0, silent);
+# elif defined(FEAT_X11)
 	    if (xterm_dpy == NULL)
 	    {
 		mch_errmsg(_("No display"));
@@ -393,7 +423,7 @@ cmdsrv_main(
 	    else
 		ret = serverSendToVim(xterm_dpy, sname, *serverStr,
 						  NULL, &srv, 0, 0, 0, silent);
-# else
+# elif defined(MSWIN)
 	    // Win32 always works?
 	    ret = serverSendToVim(sname, *serverStr, NULL, &srv, 0, 0, silent);
 # endif

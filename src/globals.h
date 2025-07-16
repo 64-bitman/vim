@@ -2089,3 +2089,7 @@ EXTERN char *wayland_display_name INIT(= NULL);
 EXTERN int wayland_display_fd;
 
 #endif
+
+#ifdef FEAT_SOCKETSERVER
+#define SOCKET_SERVER_DEF_PATH "/tmp/vim"
+#endif
