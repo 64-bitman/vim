@@ -2089,3 +2089,16 @@ EXTERN char *wayland_display_name INIT(= NULL);
 EXTERN int wayland_display_fd;
 
 #endif
+
+#if defined(FEAT_CLIENTSERVER) && !defined(MSWIN)
+
+// Backend for clientserver functionality
+typedef enum {
+    CLIENTSERVER_METHOD_NONE,
+    CLIENTSERVER_METHOD_X11,
+    CLIENTSERVER_METHOD_SOCKET
+} clientserver_method_T;
+
+EXTERN clientserver_method_T clientserver_method INIT(= 0);
+
+#endif
