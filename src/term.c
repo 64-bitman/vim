@@ -5238,6 +5238,11 @@ handle_version_response(int first, int *arg, int argc, char_u *tp)
 				    ? (char_u *)"sgr" : (char_u *)"xterm2", 0);
 	}
 
+	// Send DA1 query
+	out_str((char_u *)"\033[c");
+	out_flush();
+	vpeekc_nomap();
+
 #ifdef FEAT_TERMRESPONSE
 	int need_flush = FALSE;
 
@@ -5495,6 +5500,10 @@ handle_csi_function_key(
  *	{lead}[ABCDEFHPQRS]
  *	{lead}1;{modifier}[ABCDEFHPQRS]
  *
+ * - DA1 response. This also end with a c just like the Xterm version string,
+ *   but difference is that it uses ? instead of > for the first character
+ *   after "<Esc>[".
+ *
  * Return 0 for no match, -1 for partial match, > 0 for full match.
  */
     static int
@@ -5509,8 +5518,8 @@ handle_csi(
 	char_u	*key_name,
 	int	*slen)
 {
-    int		first = -1;  // optional char right after {lead}
-    int		trail;	     // char that ends CSI sequence
+    int		first = -1;		// optional char right after {lead}
+    int		trail;			// char that ends CSI sequence
     int		arg[3] = {-1, -1, -1};	// argument numbers
     int		argc = 0;		// number of arguments
     char_u	*ap = argp;
@@ -5608,8 +5617,8 @@ handle_csi(
     }
 
     // Version string: Eat it when there is at least one digit and
-    // it ends in 'c'
-    else if (*T_CRV != NUL && ap > argp + 1 && trail == 'c')
+    // it ends in 'c', with the first char being '>'
+    else if (*T_CRV != NUL && first == '>' && trail == 'c')
     {
 	handle_version_response(first, arg, argc, tp);
 
@@ -5621,6 +5630,19 @@ handle_csi(
 					NULL, NULL, FALSE, curbuf);
 	apply_autocmds(EVENT_TERMRESPONSEALL,
 					(char_u *)"version", NULL, FALSE, curbuf);
+	key_name[0] = (int)KS_EXTRA;
+	key_name[1] = (int)KE_IGNORE;
+    }
+
+    // DA1 response
+    else if (first == '?' && trail == 'c')
+    {
+	*slen = csi_len;
+#ifdef FEAT_EVAL
+	set_vim_var_string(VV_TERMDA1, tp, *slen);
+#endif
+	apply_autocmds(EVENT_TERMRESPONSEALL,
+					(char_u *)"da1", NULL, FALSE, curbuf);
 	key_name[0] = (int)KS_EXTRA;
 	key_name[1] = (int)KE_IGNORE;
     }
@@ -5865,7 +5887,14 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 #ifdef FEAT_TERMRESPONSE
 		// handle a key code response, drop a resource response
 		if (i - j >= 3 && argp[2] == 'r')
+		{
+# ifdef FEAT_EVAL
+		    set_vim_var_string(VV_TERMXT, tp, len);
+# endif
+		    apply_autocmds(EVENT_TERMRESPONSEALL, (char_u *)"xt", NULL,
+			    FALSE, curbuf);
 		    got_code_from_term(tp + j, i);
+		}
 #endif
 		key_name[0] = (int)KS_EXTRA;
 		key_name[1] = (int)KE_IGNORE;
@@ -7149,11 +7178,13 @@ got_code_from_term(char_u *code, int len)
 	// Get the name from the response and find it in the table.
 	name[0] = hexhex2nr(code + 3);
 	name[1] = hexhex2nr(code + 5);
+	
 	if (code[9] == '=')
 	    name[2] = hexhex2nr(code + 7);
 	else
 	    name[2] = NUL;
 	name[3] = NUL;
+
 	for (i = 0; key_names[i] != NULL; ++i)
 	{
 	    if (STRCMP(key_names[i], name) == 0)
