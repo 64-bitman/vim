@@ -11244,6 +11244,8 @@ v:t_string	eval.txt	/*v:t_string*
 v:t_tuple	eval.txt	/*v:t_tuple*
 v:t_typealias	eval.txt	/*v:t_typealias*
 v:termblinkresp	eval.txt	/*v:termblinkresp*
+v:termda1	eval.txt	/*v:termda1*
+v:termdcs	eval.txt	/*v:termdcs*
 v:termrbgresp	eval.txt	/*v:termrbgresp*
 v:termresponse	eval.txt	/*v:termresponse*
 v:termrfgresp	eval.txt	/*v:termrfgresp*

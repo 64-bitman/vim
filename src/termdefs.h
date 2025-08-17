@@ -116,7 +116,7 @@ enum SpecialKey
     KS_FD,	// disable focus event tracking
     KS_FE,	// enable focus event tracking
     KS_CF,	// set terminal alternate font
-    KS_XON	// terminal uses xon/xoff handshaking
+    KS_XON,	// terminal uses xon/xoff handshaking
 };
 
 #define KS_LAST	    KS_XON

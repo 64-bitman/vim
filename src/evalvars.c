@@ -164,7 +164,9 @@ static struct vimvar
     {VV_NAME("stacktrace",	 VAR_LIST), &t_list_dict_any, VV_RO},
     {VV_NAME("t_tuple",		 VAR_NUMBER), NULL, VV_RO},
     {VV_NAME("wayland_display",  VAR_STRING), NULL, VV_RO},
-    {VV_NAME("clipmethod",  VAR_STRING), NULL, VV_RO},
+    {VV_NAME("clipmethod",	 VAR_STRING), NULL, VV_RO},
+    {VV_NAME("termda1",		 VAR_STRING), NULL, VV_RO},
+    {VV_NAME("termdcs",		 VAR_STRING), NULL, VV_RO},
 };
 
 // shorthand

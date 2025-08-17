@@ -2911,6 +2911,18 @@ v:termu7resp	The escape sequence returned by the terminal for the |t_u7|
 		this option is set, the TermResponseAll autocommand event is
 		fired, with <amatch> set to "ambiguouswidth".
 
+						*v:termda1*
+v:termda1	The escape sequence returned by a primary device attributes
+		(DA1) query from the terminal.  When this option is set, the
+		TermResponseAll autocommand event is fired, with <amatch> set
+		to "da1".
+
+						*v:termdcs*
+v:termdcs	The escape sequence of the most recent device control sequence
+		(DCS) returned by the terminal.  When this option is set, the
+		TermResponseAll autocommand event is fired, with <amatch> set
+		to "dcs".
+
 					*v:testing* *testing-variable*
 v:testing	Must be set before using `test_garbagecollect_now()`.
 		Also, when set certain error messages won't be shown for 2

@@ -115,6 +115,9 @@ static termrequest_T u7_status = TERMREQUEST_INIT;
 // Request xterm compatibility check:
 static termrequest_T xcc_status = TERMREQUEST_INIT;
 
+// Request primary device attributes report
+static termrequest_T da1_status = TERMREQUEST_INIT;
+
 #ifdef FEAT_TERMRESPONSE
 # ifdef FEAT_TERMINAL
 // Request foreground color report:
@@ -143,6 +146,7 @@ static termrequest_T *all_termrequests[] = {
     &crv_status,
     &u7_status,
     &xcc_status,
+    &da1_status,
 # ifdef FEAT_TERMINAL
     &rfg_status,
 # endif
@@ -4193,6 +4197,27 @@ check_terminal_behavior(void)
 }
 
 /*
+ * Request primary device attributes (DA1) report. This isn't used by anything
+ * internally in Vim but can be useful for the user if they want to know if the
+ * terminal supports features such as the OSC 52 terminal command.
+ */
+    void
+may_req_da1(void)
+{
+    if (da1_status.tr_progress == STATUS_GET
+	    && can_get_termresponse()
+	    && starting == 0)
+    {
+	MAY_WANT_TO_LOG_THIS;
+	LOG_TR1("Sending DA1 request");
+	out_str((char_u *)"\033[c");
+	termrequest_sent(&da1_status);
+	out_flush();
+	(void)vpeekc_nomap();
+    }
+}
+
+/*
  * Similar to requesting the version string: Request the terminal background
  * color when it is the right moment.
  */
@@ -5609,7 +5634,7 @@ handle_csi(
 
     // Version string: Eat it when there is at least one digit and
     // it ends in 'c'
-    else if (*T_CRV != NUL && ap > argp + 1 && trail == 'c')
+    else if (*T_CRV != NUL && first == '>' && trail == 'c')
     {
 	handle_version_response(first, arg, argc, tp);
 
@@ -5621,6 +5646,23 @@ handle_csi(
 					NULL, NULL, FALSE, curbuf);
 	apply_autocmds(EVENT_TERMRESPONSEALL,
 					(char_u *)"version", NULL, FALSE, curbuf);
+	key_name[0] = (int)KS_EXTRA;
+	key_name[1] = (int)KE_IGNORE;
+    }
+
+    // Primary device attributes (DA1) response
+    else if (first == '?' && trail == 'c')
+    {
+	LOG_TRN("Received DA1 response: %s", tp);
+	da1_status.tr_progress = STATUS_GOT;
+
+	*slen = csi_len;
+#ifdef FEAT_EVAL
+	set_vim_var_string(VV_TERMDA1, tp, *slen);
+#endif
+	apply_autocmds(EVENT_TERMRESPONSEALL,
+					(char_u *)"da1", NULL, FALSE, curbuf);
+
 	key_name[0] = (int)KS_EXTRA;
 	key_name[1] = (int)KE_IGNORE;
     }
@@ -5847,6 +5889,7 @@ handle_osc(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 {
     int i, j;
+    int found = FALSE;
 
     LOG_TRN("Received DCS response: %s", (char*)tp);
     j = 1 + (tp[0] == ESC);
@@ -5870,6 +5913,7 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 		key_name[0] = (int)KS_EXTRA;
 		key_name[1] = (int)KE_IGNORE;
 		*slen = i + 1 + (tp[i] == ESC);
+		found = TRUE;
 		break;
 	    }
 	}
@@ -5915,6 +5959,7 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 #endif
 		apply_autocmds(EVENT_TERMRESPONSEALL,
 					(char_u *)"cursorshape", NULL, FALSE, curbuf);
+		found = TRUE;
 		break;
 	    }
 	}
@@ -5927,6 +5972,28 @@ handle_dcs(char_u *tp, char_u *argp, int len, char_u *key_name, int *slen)
 	LOG_TR1("not enough characters for XT");
 	return FAIL;
     }
+
+    if (!found)
+	// Just find the length up to the terminator
+	for (int k = 1 + (tp[0] == ESC); k < len; k++)
+	    if ((tp[k] == ESC && k + 1 < len && tp[k + 1] == '\\')
+		    || tp[k] == STERM)
+	    {
+		*slen = k + 1 + (tp[i] == ESC);
+		key_name[0] = (int)KS_EXTRA;
+		key_name[1] = (int)KE_IGNORE;
+		found = TRUE;
+		break;
+	    }
+
+    if (found)
+    {
+#ifdef FEAT_EVAL
+	set_vim_var_string(VV_TERMDCS, tp, *slen);
+#endif
+	apply_autocmds(EVENT_TERMRESPONSEALL, (char_u *)"dcs", NULL, FALSE, curbuf);
+    }
+
     return OK;
 }
 

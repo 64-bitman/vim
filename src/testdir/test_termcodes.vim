@@ -2803,4 +2803,14 @@ func Test_xterm_direct_no_termguicolors()
   close
 endfunc
 
+func Test_da1_handling()
+  call feedkeys("\<Esc>[?62,52;c", 'Lx!')
+  call assert_equal("\<Esc>[?62,52;c", v:termda1)
+endfunc
+
+func Test_dcs_handling()
+  call feedkeys("\<Esc>P1+r4D73=5c455d35323b25703125733b25703225735c455c5c\<Esc>\\", 'Lx!')
+  call assert_equal("\<Esc>P1+r4D73=5c455d35323b25703125733b25703225735c455c5c\<Esc>\\", v:termdcs)
+endfunc
+
 " vim: shiftwidth=2 sts=2 expandtab
