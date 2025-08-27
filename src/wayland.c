@@ -120,6 +120,7 @@ typedef struct {
 typedef struct {
     void		*proxy;
     void		*data;
+    vwl_data_offer_T	*offer;
     vwl_data_protocol_T protocol;
 } vwl_data_device_T;
 
