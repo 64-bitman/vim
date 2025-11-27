@@ -2459,6 +2459,7 @@ item_lock(typval_T *tv, int deep, int lock, int check_refcount)
 	case VAR_CLASS:
 	case VAR_OBJECT:
 	case VAR_TYPEALIAS:
+	case VAR_USERDATA:
 	    break;
 
 	case VAR_BLOB:

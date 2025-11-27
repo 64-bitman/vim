@@ -1426,6 +1426,7 @@ write_viminfo_varlist(FILE *fp)
 		    case VAR_INSTR:
 		    case VAR_CLASS:
 		    case VAR_OBJECT:
+		    case VAR_USERDATA:
 		    case VAR_TYPEALIAS:
 				      continue;
 		}

@@ -1176,6 +1176,9 @@ vim_to_ruby(typval_T *tv)
 	result = rb_str_new(tv->vval.v_blob->bv_ga.ga_data,
 		tv->vval.v_blob->bv_ga.ga_len);
     }
+    else if (tv->v_type == VAR_USERDATA)
+    {
+    }
     // else return Qnil;
 
     return result;

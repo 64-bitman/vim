@@ -5855,6 +5855,7 @@ check_can_index(typval_T *rettv, int evaluate, int verbose)
 	    return FAIL;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
+	case VAR_USERDATA:
 	case VAR_VOID:
 	    if (evaluate)
 	    {
@@ -5933,6 +5934,7 @@ eval_index_inner(
 	case VAR_CLASS:
 	case VAR_OBJECT:
 	case VAR_TYPEALIAS:
+	case VAR_USERDATA:
 	    break; // not evaluating, skipping over subscript
 
 	case VAR_NUMBER:
@@ -6687,6 +6689,10 @@ echo_string_core(
 	    r = *tofree;
 	    if (r == NULL)
 		r = (char_u *)"";
+	    break;
+	case VAR_USERDATA:
+	    *tofree =  vim_strsave(tv->vval.v_userdata->ud_type);
+	    r = *tofree;
 	    break;
     }
 
@@ -7573,6 +7579,7 @@ item_copy(
 	case VAR_CLASS:
 	case VAR_OBJECT:
 	case VAR_TYPEALIAS:
+	case VAR_USERDATA:
 	    copy_tv(from, to);
 	    break;
 	case VAR_LIST:

@@ -1571,6 +1571,7 @@ BASIC_SRC = \
 	ui.c \
 	undo.c \
 	usercmd.c \
+	userdata.c \
 	userfunc.c \
 	version.c \
 	vim9class.c \
@@ -1748,6 +1749,7 @@ OBJ_COMMON = \
 	objects/ui.o \
 	objects/undo.o \
 	objects/usercmd.o \
+	objects/userdata.o \
 	objects/userfunc.o \
 	objects/version.o \
 	objects/vim9class.o \
@@ -3592,6 +3594,9 @@ objects/undo.o: undo.c
 objects/usercmd.o: usercmd.c
 	$(CCC) -o $@ usercmd.c
 
+objects/userdata.o: userdata.c
+	$(CCC) -o $@ userdata.c
+
 objects/userfunc.o: userfunc.c
 	$(CCC) -o $@ userfunc.c
 
@@ -4749,11 +4754,13 @@ proto/textformat.pro: textformat.c
 proto/textobject.pro: textobject.c
 proto/textprop.pro: textprop.c
 proto/time.pro: time.c
+proto/treesitter.pro: treesitter.c
 proto/tuple.pro: tuple.c
 proto/typval.pro: typval.c
 proto/ui.pro: ui.c
 proto/undo.pro: undo.c
 proto/usercmd.pro: usercmd.c
+proto/userdata.pro: userdata.c
 proto/userfunc.pro: userfunc.c
 proto/version.pro: version.c
 proto/vim9class.pro: vim9class.c

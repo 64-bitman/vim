@@ -1152,6 +1152,10 @@ f_test_refcount(typval_T *argvars, typval_T *rettv)
 	    if (argvars[0].vval.v_typealias != NULL)
 		retval = argvars[0].vval.v_typealias->ta_refcount - 1;
 	    break;
+	case VAR_USERDATA:
+	    if (argvars[0].vval.v_userdata != NULL)
+		retval = argvars[0].vval.v_userdata->ud_refcount - 1;
+	    break;
     }
 
     rettv->v_type = VAR_NUMBER;

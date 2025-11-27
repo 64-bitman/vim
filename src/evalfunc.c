@@ -4467,6 +4467,7 @@ f_empty(typval_T *argvars, typval_T *rettv)
 	case VAR_ANY:
 	case VAR_VOID:
 	case VAR_INSTR:
+	case VAR_USERDATA:
 	    internal_error_no_abort("f_empty(UNKNOWN)");
 	    n = TRUE;
 	    break;
@@ -8851,6 +8852,7 @@ f_len(typval_T *argvars, typval_T *rettv)
 	case VAR_INSTR:
 	case VAR_CLASS:
 	case VAR_TYPEALIAS:
+	case VAR_USERDATA:
 	    emsg(_(e_invalid_type_for_len));
 	    break;
     }
@@ -12600,6 +12602,7 @@ f_type(typval_T *argvars, typval_T *rettv)
 	case VAR_BLOB:    n = VAR_TYPE_BLOB; break;
 	case VAR_INSTR:   n = VAR_TYPE_INSTR; break;
 	case VAR_TYPEALIAS: n = VAR_TYPE_TYPEALIAS; break;
+	case VAR_USERDATA:  n = VAR_TYPE_USERDATA; break;
 	case VAR_CLASS:
 	    {
 		class_T *cl = argvars[0].vval.v_class;

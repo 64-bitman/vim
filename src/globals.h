@@ -558,7 +558,7 @@ EXTERN int	garbage_collect_at_exit INIT(= FALSE);
 #define t_const_tuple_empty	(static_types[95])
 
 
-EXTERN type_T static_types[96]
+EXTERN type_T static_types[98]
 #ifdef DO_INIT
 = {
     // 0: t_unknown
@@ -752,6 +752,10 @@ EXTERN type_T static_types[96]
     // 94: t_tuple_empty
     {VAR_TUPLE, 0, 0, TTFLAG_STATIC, NULL, NULL, NULL},
     {VAR_TUPLE, 0, 0, TTFLAG_STATIC|TTFLAG_CONST, NULL, NULL, NULL},
+
+    // 96: t_userdata
+    {VAR_USERDATA, 0, 0, TTFLAG_STATIC, NULL, NULL, NULL},
+    {VAR_USERDATA, 0, 0, TTFLAG_STATIC|TTFLAG_CONST, NULL, NULL, NULL},
 }
 #endif
 ;

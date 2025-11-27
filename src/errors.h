@@ -3797,3 +3797,11 @@ EXTERN char e_osc_response_timed_out[]
 EXTERN char e_cannot_add_listener_in_listener_callback[]
 	INIT(= N_("E1569: Cannot use listener_add in a listener callback"));
 #endif
+#ifdef FEAT_EVAL
+EXTERN char e_using_userdata_as_number[]
+	INIT(= N_("E1520: Using a userdata as a Number"));
+EXTERN char e_using_userdata_as_float[]
+	INIT(= N_("E1521: Using a userdata as a Float"));
+EXTERN char e_using_userdata_as_string[]
+	INIT(= N_("E1522: Using a userdata as a String"));
+#endif

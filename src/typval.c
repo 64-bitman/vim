@@ -99,6 +99,10 @@ free_tv(typval_T *varp)
 	    typealias_unref(varp->vval.v_typealias);
 	    break;
 
+	case VAR_USERDATA:
+	    userdata_unref(varp->vval.v_userdata);
+	    break;
+
 	case VAR_NUMBER:
 	case VAR_FLOAT:
 	case VAR_ANY:
@@ -184,6 +188,10 @@ clear_tv(typval_T *varp)
 	    typealias_unref(varp->vval.v_typealias);
 	    varp->vval.v_typealias = NULL;
 	    break;
+	case VAR_USERDATA:
+	    userdata_unref(varp->vval.v_userdata);
+	    varp->vval.v_userdata = NULL;
+	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
 	case VAR_VOID:
@@ -223,6 +231,9 @@ tv_get_bool_or_number_chk(
 	    return varp->vval.v_number;
 	case VAR_FLOAT:
 	    emsg(_(e_using_float_as_number));
+	    break;
+	case VAR_USERDATA:
+	    emsg(_(e_using_userdata_as_number));
 	    break;
 	case VAR_FUNC:
 	case VAR_PARTIAL:
@@ -412,6 +423,9 @@ tv_get_float_chk(typval_T *varp, int *error)
 	    break;
 	case VAR_VOID:
 	    emsg(_(e_cannot_use_void_value));
+	    break;
+	case VAR_USERDATA:
+	    emsg(_(e_using_userdata_as_float));
 	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
@@ -1277,6 +1291,9 @@ tv_get_string_buf_chk_strict(typval_T *varp, char_u *buf, int strict)
 	case VAR_VOID:
 	    emsg(_(e_cannot_use_void_value));
 	    break;
+	case VAR_USERDATA:
+	    emsg(_(e_using_userdata_as_string));
+	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
 	case VAR_INSTR:
@@ -1461,6 +1478,15 @@ copy_tv(typval_T *from, typval_T *to)
 	    {
 		to->vval.v_typealias = from->vval.v_typealias;
 		++to->vval.v_typealias->ta_refcount;
+	    }
+	    break;
+	case VAR_USERDATA:
+	    if (from->vval.v_userdata == NULL)
+		to->vval.v_userdata = NULL;
+	    else
+	    {
+		to->vval.v_userdata = from->vval.v_userdata;
+		++to->vval.v_userdata->ud_refcount;
 	    }
 	    break;
 	case VAR_VOID:
@@ -2213,6 +2239,9 @@ tv_equal(
 	    r = dict_equal(tv1->vval.v_dict, tv2->vval.v_dict, ic);
 	    --recursive_cnt;
 	    return r;
+	
+	case VAR_USERDATA:
+	    return tv1->vval.v_userdata->ud_ptr == tv2->vval.v_userdata->ud_ptr;
 
 	case VAR_BLOB:
 	    return blob_equal(tv1->vval.v_blob, tv2->vval.v_blob);

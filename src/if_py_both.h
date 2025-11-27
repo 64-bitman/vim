@@ -7206,6 +7206,7 @@ ConvertToPyObject(typval_T *tv)
 	case VAR_INSTR:
 	case VAR_CLASS:
 	case VAR_OBJECT:
+	case VAR_USERDATA:
 	case VAR_TYPEALIAS:
 	    Py_INCREF(Py_None);
 	    return Py_None;

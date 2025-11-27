@@ -76,6 +76,7 @@ typedef struct blobvar_S	blob_T;
 typedef struct tuplevar_S	tuple_T;
 typedef struct generictype_S	generic_T;
 typedef struct gfargs_tab_S	gfargs_tab_T;
+typedef struct userdata_S	userdata_T;
 
 typedef struct window_S		win_T;
 typedef struct wininfo_S	wininfo_T;
@@ -1524,7 +1525,8 @@ typedef enum
     VAR_CLASS,		// "v_class" is used (also used for interface)
     VAR_OBJECT,		// "v_object" is used
     VAR_TYPEALIAS,	// "v_typealias" is used
-    VAR_TUPLE		// "v_tuple" is used
+    VAR_TUPLE,		// "v_tuple" is used
+    VAR_USERDATA	// "v_userdata" is used
 } vartype_T;
 
 // A type specification.
@@ -1672,6 +1674,17 @@ struct typealias_S
     char_u  *ta_name;
 };
 
+typedef void (*userdata_free_func)(void *ptr);
+
+struct userdata_S
+{
+    int			ud_refcount;
+    void		*ud_ptr;	// Pointer to data
+    char_u		*ud_type;   	// Static string representing the type
+    userdata_free_func	ud_free_func;  	// Function called when userdata is to
+					// be freed.
+};
+
 /*
  * Structure to hold an internal variable without a name.
  */
@@ -1697,6 +1710,7 @@ struct typval_S
 	object_T	*v_object;	// object value (can be NULL)
 	typealias_T	*v_typealias;	// user-defined type name
 	tuple_T		*v_tuple;	// tuple
+	userdata_T	*v_userdata;	// userdata
     }		vval;
 };
 

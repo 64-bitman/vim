@@ -2183,6 +2183,7 @@ equal_type(type_T *type1, type_T *type2, int flags)
 	case VAR_FLOAT:
 	case VAR_STRING:
 	case VAR_BLOB:
+	case VAR_USERDATA:
 	case VAR_JOB:
 	case VAR_CHANNEL:
 	case VAR_INSTR:
@@ -2528,6 +2529,7 @@ vartype_name(vartype_T type)
 	case VAR_CLASS: return "class";
 	case VAR_OBJECT: return "object";
 	case VAR_TYPEALIAS: return "typealias";
+	case VAR_USERDATA: return "userdata";
 
 	case VAR_FUNC:
 	case VAR_PARTIAL: return "func";
