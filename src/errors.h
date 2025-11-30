@@ -3797,3 +3797,15 @@ EXTERN char e_osc_response_timed_out[]
 EXTERN char e_cannot_add_listener_in_listener_callback[]
 	INIT(= N_("E1569: Cannot use listener_add in a listener callback"));
 #endif
+#ifdef FEAT_EVAL
+EXTERN char e_using_pointer_as_number[]
+	INIT(= N_("E1570: Using a Pointer as a Number"));
+EXTERN char e_using_pointer_as_float[]
+	INIT(= N_("E1571: Using a Pointer as a Float"));
+EXTERN char e_using_pointer_as_string[]
+	INIT(= N_("E1572: Using a Pointer as a String"));
+EXTERN char e_can_only_compare_pointer_with_pointer[]
+	INIT(= N_("E977: Can only compare Pointer with Pointer"));
+EXTERN char e_invalid_operation_for_pointer[]
+	INIT(= N_("E978: Invalid operation for Pointer"));
+#endif

@@ -868,6 +868,25 @@ fp_typval2type(typval_T *tv, garray_T *type_gap)
 }
 
 /*
+ * Get a type_T for a "pointer" typval in "tv".
+ */
+    static type_T *
+pointer_typval2type(typval_T *tv, garray_T *type_gap)
+{
+    type_T  *type;
+
+    type = get_type_ptr(type_gap);
+    if (type == NULL)
+	return NULL;
+
+    type->tt_type = tv->v_type;
+    vim_snprintf((char *)type->tt_ptype, sizeof(type->tt_ptype),
+	    "%s", tv->vval.v_pointer->pr_type);
+
+    return type;
+}
+
+/*
  * Get a type_T for a typval_T.
  * "type_gap" is used to temporarily create types in.
  * When "flags" has TVTT_DO_MEMBER also get the member type, otherwise use
@@ -934,6 +953,9 @@ typval2type_int(typval_T *tv, int copyID, garray_T *type_gap, int flags)
 	case VAR_FUNC:
 	case VAR_PARTIAL:
 	    return fp_typval2type(tv, type_gap);
+	
+	case VAR_POINTER:
+	    return pointer_typval2type(tv, type_gap);
 
 	case VAR_INSTR:
 	default:
@@ -1315,6 +1337,16 @@ check_object_type_maybe(
 }
 
 /*
+ * Check if the expected and actual types match for a pointer
+ */
+    static int
+check_pointer_type_maybe(type_T *expected, type_T *actual)
+{
+    return expected->tt_type == actual->tt_type
+	&& STRCMP(expected->tt_ptype, actual->tt_ptype) == 0;
+}
+
+/*
  * Check if the expected and actual types match.
  * Does not allow for assigning "any" to a specific type.
  * When "argidx" > 0 it is included in the error message.
@@ -1389,6 +1421,8 @@ check_type_maybe(
 	    ret = check_func_type_maybe(expected, actual, where);
 	else if (expected->tt_type == VAR_OBJECT)
 	    ret = check_object_type_maybe(expected, actual, where);
+	else if (expected->tt_type == VAR_POINTER)
+	    ret = check_pointer_type_maybe(expected, actual);
 
 	if (ret == FAIL && give_msg)
 	    type_mismatch_where(expected, actual, where);
@@ -2032,6 +2066,69 @@ parse_type_user_defined(
 }
 
 /*
+ * Parse a "pointer" type at "*arg" and advance over it.
+ * When "give_error" is TRUE give error messages, otherwise be quiet.
+ * Return NULL for failure.
+ */
+    static type_T *
+parse_type_pointer(
+    char_u	**arg,
+    garray_T	*type_gap,
+    int		give_error)
+{
+    type_T  *type;
+    char_u  *arg_start = *arg;
+
+    // pointer<...>
+    if (**arg != '<')
+    {
+	if (give_error)
+	{
+	    if (*skipwhite(*arg) == '<')
+		semsg(_(e_no_white_space_allowed_before_str_str), "<", *arg);
+	    else
+		semsg(_(e_missing_type_after_str), "pointer");
+	}
+
+	// only "pointer" is specified
+	return NULL;
+    }
+
+    // skip spaces following "pointer<"
+    *arg = skipwhite(*arg + 1);
+    type = get_type_ptr(type_gap);
+
+    if (type != NULL)
+    {
+	int i = 0;
+	char_u *s = *arg;
+
+	while (**arg != '>')
+	{
+	    (*arg)++;
+	    i++;
+	}
+
+	*arg = skipwhite(*arg);
+	if (**arg != '>')
+	{
+	    if (give_error)
+		semsg(_(e_missing_type_after_str), arg_start);
+	    vim_free(type);
+	    return NULL;
+	}
+
+	type->tt_type = VAR_POINTER;
+	vim_snprintf((char *)type->tt_ptype, sizeof(type->tt_ptype), "%.*s", i, s);
+	++*arg;
+
+        return type;
+    }
+
+    return type;
+}
+
+/*
  * Parse a type at "arg" and advance over it.
  * When "give_error" is TRUE give error messages, otherwise be quiet.
  * Return NULL for failure.
@@ -2151,6 +2248,13 @@ parse_type(
 		return &t_void;
 	    }
 	    break;
+	case 'p':
+	    if (len == 7 && STRNCMP(*arg, "pointer", len) == 0)
+	    {
+		*arg += len;
+		return parse_type_pointer(arg, type_gap, give_error);
+	    }
+	    break;
     }
 
     // User defined type
@@ -2221,6 +2325,8 @@ equal_type(type_T *type1, type_T *type2, int flags)
 									flags))
 		    return FALSE;
 	    return TRUE;
+	case VAR_POINTER:
+	    return STRCMP(type1->tt_ptype, type2->tt_ptype) == 0;
     }
     return TRUE;
 }
@@ -2528,6 +2634,7 @@ vartype_name(vartype_T type)
 	case VAR_CLASS: return "class";
 	case VAR_OBJECT: return "object";
 	case VAR_TYPEALIAS: return "typealias";
+	case VAR_POINTER: return "pointer";
 
 	case VAR_FUNC:
 	case VAR_PARTIAL: return "func";
@@ -2717,6 +2824,22 @@ failed:
 }
 
 /*
+ * Return the type name of a pointer The result may be in allocated memory, in
+ * which case "tofree" is set.
+ */
+    static char *
+type_name_pointer(char *name, type_T *type, char **tofree)
+{
+    size_t len = STRLEN(name) + STRLEN(type->tt_ptype) + 3;
+    *tofree = alloc(len);
+    if (*tofree == NULL)
+	return name;
+
+    vim_snprintf(*tofree, len, "%s<%s>", name, type->tt_ptype);
+    return *tofree;
+}
+
+/*
  * Return the name of a type.
  * The result may be in allocated memory, in which case "tofree" is set.
  */
@@ -2745,6 +2868,9 @@ type_name(type_T *type, char **tofree)
 
 	case VAR_FUNC:
 	    return type_name_func(type, tofree);
+	
+	case VAR_POINTER:
+	    return type_name_pointer(name, type, tofree);
 
 	default:
 	    break;
@@ -2780,6 +2906,14 @@ f_typename(typval_T *argvars, typval_T *rettv)
     if (argvars[0].v_type == VAR_TYPEALIAS)
     {
 	vim_snprintf((char *)IObuff, IOSIZE, "typealias<%s>", name);
+	rettv->vval.v_string = vim_strsave((char_u *)IObuff);
+	if (tofree != NULL)
+	    vim_free(tofree);
+    }
+    else if (argvars[0].v_type == VAR_POINTER)
+    {
+	vim_snprintf((char *)IObuff, IOSIZE, "pointer<%s>",
+		argvars[0].vval.v_pointer->pr_type);
 	rettv->vval.v_string = vim_strsave((char_u *)IObuff);
 	if (tofree != NULL)
 	    vim_free(tofree);

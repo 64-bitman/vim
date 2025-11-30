@@ -241,6 +241,7 @@ may_generate_2STRING(int offset, int tostring_flags, cctx_T *cctx)
 	case VAR_CLASS:
 	case VAR_OBJECT:
 	case VAR_TYPEALIAS:
+	case VAR_POINTER:
 			 to_string_error(type->tt_type);
 			 return FAIL;
     }
@@ -523,6 +524,7 @@ get_compare_isn(
 	    case VAR_DICT: isntype = ISN_COMPAREDICT; break;
 	    case VAR_FUNC: isntype = ISN_COMPAREFUNC; break;
 	    case VAR_OBJECT: isntype = ISN_COMPAREOBJECT; break;
+	    case VAR_POINTER: isntype = ISN_COMPAREPOINTER; break;
 	    default: isntype = ISN_COMPAREANY; break;
 	}
     }
@@ -852,6 +854,12 @@ generate_tv_PUSH(cctx_T *cctx, typval_T *tv)
 	case VAR_CLASS:
 	    generate_PUSHCLASS(cctx, tv->vval.v_class);
 	    break;
+	case VAR_POINTER:
+	    if (tv->vval.v_pointer != NULL)
+		iemsg("non-null pointer constant not supported");
+	    generate_PUSHPOINTER(cctx, tv->vval.v_pointer);
+	    tv->vval.v_pointer = NULL;
+	    break;
 	default:
 	    siemsg("constant type %d not supported", tv->v_type);
 	    clear_tv(tv);
@@ -1038,6 +1046,23 @@ generate_PUSHFUNC(cctx_T *cctx, char_u *name, type_T *type, int may_prefix)
     }
 
     isn->isn_arg.string = funcname;
+    return OK;
+}
+
+/*
+ * Generate an ISN_PUSHPOINTER instruction.
+ * Consumes "blob".
+ */
+    int
+generate_PUSHPOINTER(cctx_T *cctx, pointer_T *pr)
+{
+    isn_T	*isn;
+
+    RETURN_OK_IF_SKIP(cctx);
+    if ((isn = generate_instr_type(cctx, ISN_PUSHPOINTER, &t_pointer)) == NULL)
+	return FAIL;
+    isn->isn_arg.pointer = pr;
+
     return OK;
 }
 
@@ -2730,6 +2755,10 @@ delete_instr(isn_T *isn)
 	    class_unref(isn->isn_arg.classarg);
 	    break;
 
+	case ISN_PUSHPOINTER:
+	    pointer_unref(isn->isn_arg.pointer);
+	    break;
+
 	case ISN_UCALL:
 	    vim_free(isn->isn_arg.ufunc.cuf_name);
 	    break;
@@ -2870,6 +2899,7 @@ delete_instr(isn_T *isn)
 	case ISN_COMPAREOBJECT:
 	case ISN_COMPARESPECIAL:
 	case ISN_COMPARESTRING:
+	case ISN_COMPAREPOINTER:
 	case ISN_CONCAT:
 	case ISN_CONSTRUCT:
 	case ISN_COND2BOOL:

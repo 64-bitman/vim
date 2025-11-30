@@ -4648,6 +4648,7 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_PUSHJOB:
 	    case ISN_PUSHOBJ:
 	    case ISN_PUSHCLASS:
+	    case ISN_PUSHPOINTER:
 		if (GA_GROW_FAILS(&ectx->ec_stack, 1))
 		    goto theend;
 		tv = STACK_TV_BOT(0);
@@ -4701,6 +4702,10 @@ exec_instructions(ectx_T *ectx)
 		    case ISN_PUSHCLASS:
 			tv->v_type = VAR_CLASS;
 			tv->vval.v_class = iptr->isn_arg.classarg;
+			break;
+		    case ISN_PUSHPOINTER:
+			tv->v_type = VAR_POINTER;
+			tv->vval.v_pointer = iptr->isn_arg.pointer;
 			break;
 		    default:
 			tv->v_type = VAR_STRING;
@@ -5558,6 +5563,7 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_COMPARESTRING:
 	    case ISN_COMPAREBLOB:
 	    case ISN_COMPAREOBJECT:
+	    case ISN_COMPAREPOINTER:
 		{
 		    typval_T	*tv1 = STACK_TV_BOT(-2);
 		    typval_T	*tv2 = STACK_TV_BOT(-1);
@@ -5595,6 +5601,10 @@ exec_instructions(ectx_T *ectx)
 		    else if (iptr->isn_type == ISN_COMPAREBLOB)
 		    {
 			status = typval_compare_blob(tv1, tv2, exprtype, &res);
+		    }
+		    else if (iptr->isn_type == ISN_COMPAREPOINTER)
+		    {
+			status = typval_compare_pointer(tv1, tv2, exprtype, &res);
 		    }
 		    else // ISN_COMPAREOBJECT
 		    {
@@ -7433,6 +7443,10 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 			iptr->isn_arg.classarg == NULL ? "null"
 				 : (char *)iptr->isn_arg.classarg->class_name);
 		break;
+	    case ISN_PUSHPOINTER:
+		    smsg("%s%4d PUSHPOINTER %s", pfx, current,
+			    iptr->isn_arg.pointer->pr_type);
+		break;
 	    case ISN_PUSHEXC:
 		smsg("%s%4d PUSH v:exception", pfx, current);
 		break;
@@ -7765,6 +7779,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_COMPAREFUNC:
 	    case ISN_COMPAREOBJECT:
 	    case ISN_COMPAREANY:
+	    case ISN_COMPAREPOINTER:
 		   {
 		       char *p;
 		       char buf[10];
@@ -7805,6 +7820,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 			   case ISN_COMPAREOBJECT:
 						 type = "COMPAREOBJECT"; break;
 			   case ISN_COMPAREANY: type = "COMPAREANY"; break;
+			   case ISN_COMPAREPOINTER: type = "COMPAREPOINTER"; break;
 			   default: type = "???"; break;
 		       }
 
@@ -8137,6 +8153,7 @@ tv2bool(typval_T *tv)
 	case VAR_CLASS:
 	case VAR_OBJECT:
 	case VAR_TYPEALIAS:
+	case VAR_POINTER:
 	    break;
     }
     return FALSE;

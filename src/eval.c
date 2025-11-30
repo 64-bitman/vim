@@ -2718,6 +2718,7 @@ tv_op(typval_T *tv1, typval_T *tv2, char_u *op)
 	case VAR_CLASS:
 	case VAR_TYPEALIAS:
 	case VAR_TUPLE:
+	case VAR_POINTER:
 	    break;
 
 	case VAR_BLOB:
@@ -5856,6 +5857,7 @@ check_can_index(typval_T *rettv, int evaluate, int verbose)
 	case VAR_UNKNOWN:
 	case VAR_ANY:
 	case VAR_VOID:
+	case VAR_POINTER:
 	    if (evaluate)
 	    {
 		emsg(_(e_cannot_index_special_variable));
@@ -5933,6 +5935,7 @@ eval_index_inner(
 	case VAR_CLASS:
 	case VAR_OBJECT:
 	case VAR_TYPEALIAS:
+	case VAR_POINTER:
 	    break; // not evaluating, skipping over subscript
 
 	case VAR_NUMBER:
@@ -6687,6 +6690,11 @@ echo_string_core(
 	    r = *tofree;
 	    if (r == NULL)
 		r = (char_u *)"";
+	    break;
+	
+	case VAR_POINTER:
+	    r = tv->vval.v_pointer->pr_type;
+	    *tofree = NULL;
 	    break;
     }
 
@@ -7573,6 +7581,7 @@ item_copy(
 	case VAR_CLASS:
 	case VAR_OBJECT:
 	case VAR_TYPEALIAS:
+	case VAR_POINTER:
 	    copy_tv(from, to);
 	    break;
 	case VAR_LIST:

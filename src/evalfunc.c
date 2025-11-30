@@ -1863,6 +1863,14 @@ ret_maparg(int argcount,
     return &t_string;
 }
 
+    static type_T *
+ret_pointer(int argcount UNUSED,
+	type2_T *argtypes UNUSED,
+	type_T	**decl_type UNUSED)
+{
+    return &t_pointer;
+}
+
 /*
  * Array with names and number of arguments of all internal functions
  * MUST BE KEPT SORTED IN strcmp() ORDER FOR BINARY SEARCH!
@@ -3061,6 +3069,8 @@ static const funcentry_T global_functions[] =
 			ret_void,	    f_test_alloc_fail},
     {"test_autochdir",	0, 0, 0,	    NULL,
 			ret_void,	    f_test_autochdir},
+    {"test_create_pointer", 1, 1, 0,	    arg1_string,
+			ret_pointer,	    f_test_create_pointer},
     {"test_feedinput",	1, 1, FEARG_1,	    arg1_string,
 			ret_void,	    f_test_feedinput},
     {"test_garbagecollect_now",	0, 0, 0,    NULL,
@@ -4459,6 +4469,10 @@ f_empty(typval_T *argvars, typval_T *rettv)
 	    n = argvars[0].vval.v_typealias == NULL
 		|| argvars[0].vval.v_typealias->ta_name == NULL
 		|| *argvars[0].vval.v_typealias->ta_name == NUL;
+	    break;
+	
+	case VAR_POINTER:
+	    n = false; // Pointer reference should always be valid
 	    break;
 
 	case VAR_UNKNOWN:
@@ -8851,6 +8865,7 @@ f_len(typval_T *argvars, typval_T *rettv)
 	case VAR_INSTR:
 	case VAR_CLASS:
 	case VAR_TYPEALIAS:
+	case VAR_POINTER:
 	    emsg(_(e_invalid_type_for_len));
 	    break;
     }
@@ -12600,6 +12615,7 @@ f_type(typval_T *argvars, typval_T *rettv)
 	case VAR_BLOB:    n = VAR_TYPE_BLOB; break;
 	case VAR_INSTR:   n = VAR_TYPE_INSTR; break;
 	case VAR_TYPEALIAS: n = VAR_TYPE_TYPEALIAS; break;
+	case VAR_POINTER: n = VAR_TYPE_POINTER; break;
 	case VAR_CLASS:
 	    {
 		class_T *cl = argvars[0].vval.v_class;

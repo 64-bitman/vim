@@ -98,6 +98,10 @@ free_tv(typval_T *varp)
 	case VAR_TYPEALIAS:
 	    typealias_unref(varp->vval.v_typealias);
 	    break;
+	
+	case VAR_POINTER:
+	    pointer_unref(varp->vval.v_pointer);
+	    break;
 
 	case VAR_NUMBER:
 	case VAR_FLOAT:
@@ -183,6 +187,10 @@ clear_tv(typval_T *varp)
 	case VAR_TYPEALIAS:
 	    typealias_unref(varp->vval.v_typealias);
 	    varp->vval.v_typealias = NULL;
+	    break;
+	case VAR_POINTER:
+	    pointer_unref(varp->vval.v_pointer);
+	    varp->vval.v_pointer = NULL;
 	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
@@ -291,6 +299,9 @@ tv_get_bool_or_number_chk(
 	    break;
 	case VAR_VOID:
 	    emsg(_(e_cannot_use_void_value));
+	    break;
+	case VAR_POINTER:
+	    emsg(_(e_using_pointer_as_number));
 	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
@@ -412,6 +423,9 @@ tv_get_float_chk(typval_T *varp, int *error)
 	    break;
 	case VAR_VOID:
 	    emsg(_(e_cannot_use_void_value));
+	    break;
+	case VAR_POINTER:
+	    emsg(_(e_using_pointer_as_float));
 	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
@@ -1277,6 +1291,9 @@ tv_get_string_buf_chk_strict(typval_T *varp, char_u *buf, int strict)
 	case VAR_VOID:
 	    emsg(_(e_cannot_use_void_value));
 	    break;
+	case VAR_POINTER:
+	    emsg(_(e_using_pointer_as_string));
+	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
 	case VAR_INSTR:
@@ -1466,6 +1483,15 @@ copy_tv(typval_T *from, typval_T *to)
 	case VAR_VOID:
 	    emsg(_(e_cannot_use_void_value));
 	    ret = FAIL;
+	    break;
+	case VAR_POINTER:
+	    if (from->vval.v_pointer == NULL)
+		to->vval.v_pointer = NULL;
+	    else
+	    {
+		to->vval.v_pointer = from->vval.v_pointer;
+		++to->vval.v_pointer->pr_refcount;
+	    }
 	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
@@ -2045,6 +2071,47 @@ typval_compare_string(
     *res = val;
     return OK;
 }
+
+/*
+ * Compare "tv1" to "tv2" as pointers according to "type".
+ * Put the result, false or true, in "res".
+ * Return FAIL and give an error message when the comparison can't be done.
+ */
+    int
+typval_compare_pointer(
+	typval_T    *tv1,
+	typval_T    *tv2,
+	exprtype_T  type,
+	int	    *res)
+{
+    int	    val = 0;
+
+    if (type == EXPR_IS || type == EXPR_ISNOT)
+    {
+	val = (tv1->v_type == tv2->v_type
+			&& tv1->vval.v_pointer == tv2->vval.v_pointer);
+	if (type == EXPR_ISNOT)
+	    val = !val;
+    }
+    else if (tv1->v_type != tv2->v_type
+	    || (type != EXPR_EQUAL && type != EXPR_NEQUAL))
+    {
+	if (tv1->v_type != tv2->v_type)
+	    emsg(_(e_can_only_compare_pointer_with_pointer));
+	else
+	    emsg(_(e_invalid_operation_for_pointer));
+	return FAIL;
+    }
+    else
+    {
+	val = tv1->vval.v_pointer->pr_ptr == tv2->vval.v_pointer->pr_ptr;
+	if (type == EXPR_NEQUAL)
+	    val = !val;
+    }
+    *res = val;
+    return OK;
+}
+
 /*
  * Convert any type to a string, never give an error.
  * When "quotes" is TRUE add quotes to a string.
@@ -2258,6 +2325,9 @@ tv_equal(
 
 	case VAR_TYPEALIAS:
 	    return tv1->vval.v_typealias == tv2->vval.v_typealias;
+	
+	case VAR_POINTER:
+	    return tv1->vval.v_pointer->pr_ptr == tv2->vval.v_pointer->pr_ptr;
 
 	case VAR_UNKNOWN:
 	case VAR_ANY:

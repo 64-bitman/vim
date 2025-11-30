@@ -1152,6 +1152,10 @@ f_test_refcount(typval_T *argvars, typval_T *rettv)
 	    if (argvars[0].vval.v_typealias != NULL)
 		retval = argvars[0].vval.v_typealias->ta_refcount - 1;
 	    break;
+	case VAR_POINTER:
+	    if (argvars[0].vval.v_pointer != NULL)
+		retval = argvars[0].vval.v_pointer->pr_refcount - 1;
+	    break;
     }
 
     rettv->v_type = VAR_NUMBER;
@@ -1587,6 +1591,25 @@ f_test_settime(typval_T *argvars, typval_T *rettv UNUSED)
 	return;
 
     time_for_testing = (time_t)tv_get_number(&argvars[0]);
+}
+
+    void
+f_test_create_pointer(typval_T *argvars, typval_T *rettv)
+{
+    pointer_T *pr;
+
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    pr = pointer_new(NULL, argvars[0].vval.v_string, NULL);
+
+    if (pr == NULL)
+	return;
+
+    pr->pr_refcount++;
+
+    rettv->v_type = VAR_POINTER;
+    rettv->vval.v_pointer = pr;
 }
 
 #endif // defined(FEAT_EVAL)

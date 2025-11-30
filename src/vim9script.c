@@ -1123,6 +1123,7 @@ static char *reserved[] = {
     "null_list",
     "null_object",
     "null_partial",
+    "null_pointer",
     "null_string",
     "null_tuple",
     "super",

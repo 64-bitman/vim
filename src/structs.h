@@ -1502,6 +1502,7 @@ typedef struct instr_S instr_T;
 typedef struct class_S class_T;
 typedef struct object_S object_T;
 typedef struct typealias_S typealias_T;
+typedef struct pointer_S pointer_T;
 
 typedef enum
 {
@@ -1524,7 +1525,8 @@ typedef enum
     VAR_CLASS,		// "v_class" is used (also used for interface)
     VAR_OBJECT,		// "v_object" is used
     VAR_TYPEALIAS,	// "v_typealias" is used
-    VAR_TUPLE		// "v_tuple" is used
+    VAR_TUPLE,		// "v_tuple" is used
+    VAR_POINTER		// "v_pointer" is used
 } vartype_T;
 
 // A type specification.
@@ -1536,6 +1538,7 @@ struct type_S {
     type_T	    *tt_member;	    // for list, dict, func return type
     class_T	    *tt_class;	    // for class and object
     type_T	    **tt_args;	    // func argument types, allocated
+    char_u	    tt_ptype[12];   // type of pointer
 };
 
 typedef struct {
@@ -1672,6 +1675,16 @@ struct typealias_S
     char_u  *ta_name;
 };
 
+typedef void (*pointer_free_func_T)(void *);
+
+struct pointer_S
+{
+    int	    pr_refcount;
+    char_u  *pr_type;
+    void    *pr_ptr;
+    pointer_free_func_T pr_free_func;
+};
+
 /*
  * Structure to hold an internal variable without a name.
  */
@@ -1697,6 +1710,7 @@ struct typval_S
 	object_T	*v_object;	// object value (can be NULL)
 	typealias_T	*v_typealias;	// user-defined type name
 	tuple_T		*v_tuple;	// tuple
+	pointer_T	*v_pointer;	// pointer
     }		vval;
 };
 

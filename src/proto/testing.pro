@@ -37,4 +37,5 @@ void f_test_setmouse(typval_T *argvars, typval_T *rettv);
 void f_test_mswin_event(typval_T *argvars, typval_T *rettv);
 void f_test_gui_event(typval_T *argvars, typval_T *rettv);
 void f_test_settime(typval_T *argvars, typval_T *rettv);
+void f_test_create_pointer(typval_T *argvars, typval_T *rettv);
 /* vim: set ft=c : */

@@ -1538,6 +1538,7 @@ BASIC_SRC = \
 	optionstr.c \
 	os_unix.c \
 	auto/pathdef.c \
+	pointer.c \
 	popupmenu.c \
 	popupwin.c \
 	profiler.c \
@@ -1715,6 +1716,7 @@ OBJ_COMMON = \
 	objects/optionstr.o \
 	objects/os_unix.o \
 	objects/pathdef.o \
+	objects/pointer.o \
 	objects/popupmenu.o \
 	objects/popupwin.o \
 	objects/profiler.o \
@@ -1920,6 +1922,7 @@ PROTO_FILES = \
 	proto/os_unix.pro \
 	proto/os_vms.pro \
 	proto/os_win32.pro \
+	proto/pointer.pro \
 	proto/popupmenu.pro \
 	proto/popupwin.pro \
 	proto/profiler.pro \
@@ -3493,6 +3496,9 @@ objects/winclip.o: winclip.c $(VIM_H_DEPENDENCIES)
 objects/pathdef.o: auto/pathdef.c
 	$(CCC) -o $@ auto/pathdef.c
 
+objects/pointer.o: pointer.c
+	$(CCC) -o $@ pointer.c
+
 objects/popupmenu.o: popupmenu.c
 	$(CCC) -o $@ popupmenu.c
 
@@ -4720,6 +4726,7 @@ proto/os_qnx.pro: os_qnx.c
 proto/os_unix.pro: os_unix.c
 proto/os_vms.pro: os_vms.c
 proto/os_win32.pro: os_win32.c
+proto/pointer.pro: pointer.c
 proto/popupmenu.pro: popupmenu.c
 proto/popupwin.pro: popupwin.c
 proto/profiler.pro: profiler.c
