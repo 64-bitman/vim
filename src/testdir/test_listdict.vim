@@ -1657,4 +1657,13 @@ def Test_id_with_dict()
   assert_equal('', id(null_channel))
   assert_equal('', id(null_job))
 enddef
+
+" Test when using number as a key
+def Test_dict_number_key()
+  var d = {1: "one", 4: "two", 91293912: "three"}
+
+  for key in keys(d)
+    assert_equal("number", typename(key))
+  endfor
+enddef
 " vim: shiftwidth=2 sts=2 expandtab

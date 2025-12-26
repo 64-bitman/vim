@@ -1390,52 +1390,6 @@ typedef struct
  * Syntax items - usually buffer-specific.
  */
 
-/*
- * Item for a hashtable.  "hi_key" can be one of three values:
- * NULL:	   Never been used
- * HI_KEY_REMOVED: Entry was removed
- * Otherwise:	   Used item, pointer to the actual key; this usually is
- *		   inside the item, subtract an offset to locate the item.
- *		   This reduces the size of hashitem by 1/3.
- */
-typedef struct hashitem_S
-{
-    long_u	hi_hash;	// cached hash number of hi_key
-    char_u	*hi_key;
-} hashitem_T;
-
-// The address of "hash_removed" is used as a magic number for hi_key to
-// indicate a removed item.
-#define HI_KEY_REMOVED &hash_removed
-#define HASHITEM_EMPTY(hi) ((hi)->hi_key == NULL || (hi)->hi_key == &hash_removed)
-
-// Initial size for a hashtable.  Our items are relatively small and growing
-// is expensive, thus use 16 as a start.  Must be a power of 2.
-// This allows for storing 10 items (2/3 of 16) before a resize is needed.
-#define HT_INIT_SIZE 16
-
-// flags used for ht_flags
-#define HTFLAGS_ERROR	0x01	// Set when growing failed, can't add more
-				// items before growing works.
-#define HTFLAGS_FROZEN	0x02	// Trying to add or remove an item will result
-				// in an error message.
-
-typedef struct hashtable_S
-{
-    long_u	ht_mask;	// mask used for hash value (nr of items in
-				// array is "ht_mask" + 1)
-    long_u	ht_used;	// number of items used
-    long_u	ht_filled;	// number of items used + removed
-    int		ht_changed;	// incremented when adding or removing an item
-    int		ht_locked;	// counter for hash_lock()
-    int		ht_flags;	// HTFLAGS_ values
-    hashitem_T	*ht_array;	// points to the array, allocated when it's
-				// not "ht_smallarray"
-    hashitem_T	ht_smallarray[HT_INIT_SIZE];   // initial array
-} hashtab_T;
-
-typedef long_u hash_T;		// Type for hi_hash
-
 
 // Use 64-bit Number.
 #ifdef MSWIN
@@ -1472,6 +1426,61 @@ typedef long_u hash_T;		// Type for hi_hash
 #  define UVARNUM_MAX		ULONG_LONG_MAX
 # endif
 #endif
+
+/*
+ * Item for a hashtable.  "hi_key" can be one of three values:
+ * NULL:	   Never been used
+ * HI_KEY_REMOVED: Entry was removed
+ * Otherwise:	   Used item, pointer to the actual key; this usually is
+ *		   inside the item, subtract an offset to locate the item.
+ *		   This reduces the size of hashitem by 1/3.
+ */
+typedef struct hashitem_S
+{
+    long_u	hi_hash;	// cached hash number of hi_key
+    char_u	hi_type;	// Zero if item has never been used
+    union
+    {
+	char_u	    *hi_key;	    // String key
+	varnumber_T *hi_key_nr;	    // Pointer to the integer value
+    };
+} hashitem_T;
+
+typedef enum
+{
+    HITYPE_REMOVED = 1, // Hash item is removed
+    HITYPE_STR,	    // Uses string as key
+    HITYPE_NUMBER,  // Uses an integer as a key
+} hashitem_type_T;
+
+#define HASHITEM_EMPTY(hi) ((hi)->hi_type == 0 || (hi)->hi_type == HITYPE_REMOVED)
+
+// Initial size for a hashtable.  Our items are relatively small and growing
+// is expensive, thus use 16 as a start.  Must be a power of 2.
+// This allows for storing 10 items (2/3 of 16) before a resize is needed.
+#define HT_INIT_SIZE 16
+
+// flags used for ht_flags
+#define HTFLAGS_ERROR	0x01	// Set when growing failed, can't add more
+				// items before growing works.
+#define HTFLAGS_FROZEN	0x02	// Trying to add or remove an item will result
+				// in an error message.
+
+typedef struct hashtable_S
+{
+    long_u	ht_mask;	// mask used for hash value (nr of items in
+				// array is "ht_mask" + 1)
+    long_u	ht_used;	// number of items used
+    long_u	ht_filled;	// number of items used + removed
+    int		ht_changed;	// incremented when adding or removing an item
+    int		ht_locked;	// counter for hash_lock()
+    int		ht_flags;	// HTFLAGS_ values
+    hashitem_T	*ht_array;	// points to the array, allocated when it's
+				// not "ht_smallarray"
+    hashitem_T	ht_smallarray[HT_INIT_SIZE];   // initial array
+} hashtab_T;
+
+typedef long_u hash_T;		// Type for hi_hash
 
 // Struct that holds both a normal function name and a partial_T, as used for a
 // callback argument.
@@ -1532,7 +1541,7 @@ struct type_S {
     vartype_T	    tt_type;
     int8_T	    tt_argcount;    // for func, incl. vararg, -1 for unknown
     int8_T	    tt_min_argcount; // number of non-optional arguments
-    char_u	    tt_flags;	    // TTFLAG_ values
+    short_u	    tt_flags;	    // TTFLAG_ values
     type_T	    *tt_member;	    // for list, dict, func return type
     class_T	    *tt_class;	    // for class and object
     type_T	    **tt_args;	    // func argument types, allocated
@@ -1551,6 +1560,8 @@ typedef struct {
 #define TTFLAG_CONST	    0x20    // cannot be changed
 #define TTFLAG_SUPER	    0x40    // object from "super".
 #define TTFLAG_GENERIC	    0x80    // generic type
+#define TTFLAG_MAP	    0x100   // numeric dictionary keys are not converted
+				    // into strings.
 
 #define IS_GENERIC_TYPE(type)	\
     ((type->tt_flags & TTFLAG_GENERIC) == TTFLAG_GENERIC)
@@ -1802,6 +1813,17 @@ struct dictitem16_S
 };
 typedef struct dictitem16_S dictitem16_T;
 
+/*
+ * A dictitem with an integer value as the key.
+ */
+struct dictitemnr_S
+{
+    typval_T	di_tv;		// type and value of the variable
+    char_u	di_flags;	// DI_FLAGS_ flags (only used for variable)
+    varnumber_T di_key;
+};
+typedef struct dictitemnr_S dictitemnr_T;
+
 // Flags for "di_flags"
 #define DI_FLAGS_RO	   0x01	    // read-only variable
 #define DI_FLAGS_RO_SBX	   0x02	    // read-only in the sandbox
@@ -1824,7 +1846,10 @@ struct dictvar_S
     dict_T	*dv_copydict;	// copied dict used by deepcopy()
     dict_T	*dv_used_next;	// next dict in used dicts list
     dict_T	*dv_used_prev;	// previous dict in used dicts list
+    char_u	dv_flags;
 };
+
+#define DV_FLAGS_MAP	   0x01	    // Don't convert number keys into strings
 
 /*
  * Structure to hold info about a blob.

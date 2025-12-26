@@ -400,7 +400,7 @@ get_tuple_type(garray_T *tuple_types_gap, garray_T *type_gap)
  * Get a dict type, based on the member item type in "member_type".
  */
     type_T *
-get_dict_type(type_T *member_type, garray_T *type_gap)
+get_dict_type(type_T *member_type, garray_T *type_gap, bool is_map)
 {
     type_T *type;
 
@@ -716,7 +716,7 @@ dict_typval2type(typval_T *tv, int copyID, garray_T *type_gap, int flags)
 	common_type(typval2type(value, copyID, type_gap, TVTT_DO_MEMBER),
 					member_type, &member_type, type_gap);
 
-    return get_dict_type(member_type, type_gap);
+    return get_dict_type(member_type, type_gap, d->dv_flags & DV_FLAGS_MAP);
 }
 
 /*
@@ -1603,6 +1603,7 @@ parse_type_member(
 	garray_T    *type_gap,
 	int	    give_error,
 	char	    *info,
+	bool	    is_map,
 	ufunc_T	    *ufunc,
 	cctx_T	    *cctx)
 {
@@ -1638,7 +1639,7 @@ parse_type_member(
 
     if (type->tt_type == VAR_LIST)
 	return get_list_type(member_type, type_gap);
-    return get_dict_type(member_type, type_gap);
+    return get_dict_type(member_type, type_gap, is_map);
 }
 
 /*
@@ -2085,8 +2086,8 @@ parse_type(
 	    {
 		*arg += len;
 		return parse_type_member(arg, &t_dict_any, type_gap,
-						give_error, "dict", ufunc,
-						cctx);
+						give_error, "dict", false,
+						ufunc, cctx);
 	    }
 	    break;
 	case 'f':
@@ -2111,8 +2112,17 @@ parse_type(
 	    {
 		*arg += len;
 		return parse_type_member(arg, &t_list_any, type_gap,
-						give_error, "list", ufunc,
-						cctx);
+						give_error, "list", false,
+						ufunc, cctx);
+	    }
+	    break;
+	case 'm':
+	    if (len == 3 && STRNCMP(*arg, "map", len) == 0)
+	    {
+		*arg += len;
+		return parse_type_member(arg, &t_dict_any, type_gap,
+						give_error, "map", false,
+						ufunc, cctx);
 	    }
 	    break;
 	case 'n':

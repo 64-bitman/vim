@@ -9,7 +9,7 @@ void free_type(type_T *type);
 void set_tv_type(typval_T *tv, type_T *type);
 type_T *get_list_type(type_T *member_type, garray_T *type_gap);
 type_T *get_tuple_type(garray_T *tuple_types_gap, garray_T *type_gap);
-type_T *get_dict_type(type_T *member_type, garray_T *type_gap);
+type_T *get_dict_type(type_T *member_type, garray_T *type_gap, bool is_map);
 type_T *alloc_func_type(type_T *ret_type, int argcount, garray_T *type_gap);
 type_T *get_func_type(type_T *ret_type, int argcount, garray_T *type_gap);
 int func_type_add_arg_types(type_T *functype, int argcount, garray_T *type_gap);

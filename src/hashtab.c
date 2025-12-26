@@ -134,11 +134,30 @@ hash_find(hashtab_T *ht, char_u *key)
     return hash_lookup(ht, key, hash_hash(key));
 }
 
+static bool
+hash_value_eq(void *key, hashitem_type_T type, hashitem_T *hi)
+{
+    if (hi->hi_type != type)
+	return false;
+
+    switch (type)
+    {
+	case HITYPE_STR:
+	    return STRCMP((char_u *)key, (char_u *)hi->hi_key) == 0;
+	case HITYPE_NUMBER:
+	    return *(varnumber_T *)key == *hi->hi_key_nr;
+	default:
+	    siemsg("Unknown hash value type %d", type);
+	    return false;
+    }
+}
+
 /*
- * Like hash_find(), but caller computes "hash".
+ * "type" may either be HIFLAGS_STR, HIFLAGS_NUMBER, or HIFLAGS_PTR, which is
+ * what "key" actually is.
  */
-    hashitem_T *
-hash_lookup(hashtab_T *ht, char_u *key, hash_T hash)
+static hashitem_T *
+hash_lookup_int(hashtab_T *ht, void *key, hashitem_type_T type, hash_T hash)
 {
     hash_T	perturb;
     hashitem_T	*freeitem;
@@ -158,11 +177,11 @@ hash_lookup(hashtab_T *ht, char_u *key, hash_T hash)
     idx = (unsigned)(hash & ht->ht_mask);
     hi = &ht->ht_array[idx];
 
-    if (hi->hi_key == NULL)
+    if (hi->hi_type == 0)
 	return hi;
-    if (hi->hi_key == HI_KEY_REMOVED)
+    if (hi->hi_type == HITYPE_REMOVED)
 	freeitem = hi;
-    else if (hi->hi_hash == hash && STRCMP(hi->hi_key, key) == 0)
+    else if (hi->hi_hash == hash && hash_value_eq(key, type, hi))
 	return hi;
     else
 	freeitem = NULL;
@@ -183,15 +202,33 @@ hash_lookup(hashtab_T *ht, char_u *key, hash_T hash)
 #endif
 	idx = (unsigned)((idx << 2U) + idx + perturb + 1U);
 	hi = &ht->ht_array[idx & ht->ht_mask];
-	if (hi->hi_key == NULL)
+	if (hi->hi_type == 0)
 	    return freeitem == NULL ? hi : freeitem;
 	if (hi->hi_hash == hash
-		&& hi->hi_key != HI_KEY_REMOVED
-		&& STRCMP(hi->hi_key, key) == 0)
+		&& hi->hi_type != HITYPE_REMOVED
+		&& hash_value_eq(key, type, hi))
 	    return hi;
-	if (hi->hi_key == HI_KEY_REMOVED && freeitem == NULL)
+	if (hi->hi_type == HITYPE_REMOVED && freeitem == NULL)
 	    freeitem = hi;
     }
+}
+
+/*
+ * Like hash_find(), but caller computes "hash".
+ */
+    hashitem_T *
+hash_lookup(hashtab_T *ht, char_u *key, hash_T hash)
+{
+    return hash_lookup_int(ht, key, HITYPE_STR, hash);
+}
+
+/*
+ * Like hash_lookup(), but uses a integer for the key
+ */
+    hashitem_T *
+hash_lookup_nr(hashtab_T *ht, varnumber_T key, hash_T hash)
+{
+    return hash_lookup_int(ht, &key, HITYPE_NUMBER, hash);
 }
 
 #if defined(FEAT_EVAL) || defined(FEAT_SYN_HL)
@@ -236,9 +273,40 @@ hash_add(hashtab_T *ht, char_u *key, char *command)
 }
 
 /*
- * Add item "hi" with "key" to hashtable "ht".  "key" must not be NULL and
- * "hi" must have been obtained with hash_lookup() and point to an empty item.
- * "hi" is invalid after this!
+ * Add item "hi" with "key" to hashtable "ht" with type "type".  "key" must not
+ * be NULL and "hi" must have been obtained with hash_lookup() and point to an
+ * empty item. "hi" is invalid after this!
+ * Returns OK or FAIL (out of memory).
+ */
+int
+hash_add_item_t(
+    hashtab_T	    *ht,
+    hashitem_T	    *hi,
+    void	    *key,
+    hashitem_type_T type,
+    hash_T	    hash)
+{
+    // If resizing failed before and it fails again we can't add an item.
+    if (ht->ht_flags & HTFLAGS_ERROR)
+	return FAIL;
+
+    ++ht->ht_used;
+    ++ht->ht_changed;
+    if (hi->hi_type == 0)
+	++ht->ht_filled;
+    hi->hi_key = key;
+    hi->hi_hash = hash;
+    hi->hi_type = type;
+
+    // When the space gets low may resize the array.
+    return hash_may_resize(ht, 0);
+}
+
+
+/*
+ * Add item "hi" with string "key" to hashtable "ht".  "key" must not be NULL
+ * and "hi" must have been obtained with hash_lookup() and point to an empty
+ * item. "hi" is invalid after this!
  * Returns OK or FAIL (out of memory).
  */
     int
@@ -248,19 +316,7 @@ hash_add_item(
     char_u	*key,
     hash_T	hash)
 {
-    // If resizing failed before and it fails again we can't add an item.
-    if (ht->ht_flags & HTFLAGS_ERROR)
-	return FAIL;
-
-    ++ht->ht_used;
-    ++ht->ht_changed;
-    if (hi->hi_key == NULL)
-	++ht->ht_filled;
-    hi->hi_key = key;
-    hi->hi_hash = hash;
-
-    // When the space gets low may resize the array.
-    return hash_may_resize(ht, 0);
+    return hash_add_item_t(ht, hi, key, HITYPE_STR, hash);
 }
 
 #if 0  // not used
@@ -293,7 +349,7 @@ hash_remove(hashtab_T *ht, hashitem_T *hi, char *command)
 	return FAIL;
     --ht->ht_used;
     ++ht->ht_changed;
-    hi->hi_key = HI_KEY_REMOVED;
+    hi->hi_type = HITYPE_REMOVED;
     hash_may_resize(ht, 0);
     return OK;
 }
@@ -464,12 +520,12 @@ hash_may_resize(
 	    newi = (unsigned)(olditem->hi_hash & newmask);
 	    newitem = &newarray[newi];
 
-	    if (newitem->hi_key != NULL)
+	    if (newitem->hi_type != 0)
 		for (perturb = olditem->hi_hash; ; perturb >>= PERTURB_SHIFT)
 		{
 		    newi = (unsigned)((newi << 2U) + newi + perturb + 1U);
 		    newitem = &newarray[newi & newmask];
-		    if (newitem->hi_key == NULL)
+		    if (newitem->hi_type == 0)
 			break;
 		}
 	    *newitem = *olditem;
@@ -510,4 +566,14 @@ hash_hash(char_u *key)
 	hash = hash * 101 + *p++;
 
     return hash;
+}
+
+/*
+ * Same as hash_hash() but for numeric keys
+ */
+    hash_T
+hash_hash_nr(varnumber_T key)
+{
+    key *= 11400714819323198485ULL;
+    return (hash_T)(key ^ (key >> 32));
 }
