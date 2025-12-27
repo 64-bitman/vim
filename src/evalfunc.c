@@ -1223,8 +1223,6 @@ arg_string_list_tuple_or_dict(
 arg_cursor1(type_T *type, type_T *decl_type UNUSED, argcontext_T *context)
 {
     if (type->tt_type == VAR_NUMBER
-	    || type->tt_type == VAR_STRING
-	    || type->tt_type == VAR_LIST
 	    || type_any_or_unknown(type))
 	return OK;
 
@@ -2267,6 +2265,8 @@ static const funcentry_T global_functions[] =
 			ret_list_dict_any,  f_getbufinfo},
     {"getbufline",	2, 3, FEARG_1,	    arg3_buffer_lnum_lnum,
 			ret_list_string,    f_getbufline},
+    {"getbuflinelen",	2, 3, FEARG_1,	    arg3_buffer_lnum_lnum,
+			ret_number,	    f_getbuflinelen},
     {"getbufoneline",	2, 2, FEARG_1,	    arg2_buffer_lnum,
 			ret_string,	    f_getbufoneline},
     {"getbufvar",	2, 3, FEARG_1,	    arg3_buffer_string_any,

@@ -931,6 +931,121 @@ f_setline(typval_T *argvars, typval_T *rettv)
     if (did_emsg == did_emsg_before)
 	set_buffer_lines(curbuf, lnum, FALSE, &argvars[1], rettv);
 }
+
+/*
+ * "havebuf" true: getbuflinelen()
+ * "havebuf" false: getlinelen()
+ */
+    static void
+getbuflinelen(typval_T *argvars, typval_T *rettv, bool havebuf)
+{
+    buf_T	*buf;
+    linenr_T	start, end;
+    varnumber_T total_len = 0;
+
+    if (havebuf)
+    {
+	if (check_for_buffer_arg(argvars, 0) == FAIL
+		|| check_for_lnum_arg(argvars, 1) == FAIL
+		|| check_for_opt_lnum_arg(argvars, 2) == FAIL)
+	    return;
+	buf = get_buf_arg(&argvars[0]);
+
+	if (buf == NULL)
+	    goto exit;
+
+	start = tv_get_lnum_buf(&argvars[1], buf);
+
+	if (argvars[2].v_type == VAR_UNKNOWN)
+	    end = start;
+	else
+	    end = tv_get_lnum_buf(&argvars[2], buf);
+    }
+    else
+    {
+	if (check_for_lnum_arg(argvars, 0) == FAIL
+		|| check_for_opt_lnum_arg(argvars, 1) == FAIL)
+	    return;
+	buf = curbuf;
+
+	start = tv_get_lnum_buf(&argvars[0], buf);
+
+	if (argvars[2].v_type == VAR_UNKNOWN)
+	    end = start;
+	else
+	    end = tv_get_lnum_buf(&argvars[1], buf);
+    }
+
+
+
+exit:
+    rettv->v_type = VAR_NUMBER;
+    rettv->vval.v_number = total_len;
+}
+
+/*
+ * "getlinelen()" function
+ */
+    void
+f_getlinelen(typval_T *argvars, typval_T *rettv)
+{
+    if (in_vim9script()
+	    && (check_for_buffer_arg(argvars, 0) == FAIL
+		|| check_for_lnum_arg(argvars, 1) == FAIL
+		|| check_for_opt_lnum_arg(argvars, 2) == FAIL))
+}
+
+/*
+ * "getbuflinelen()" function
+ */
+    void
+f_getbuflinelen(typval_T *argvars, typval_T *rettv)
+{
+    buf_T	*buf = curbuf;
+    varnumber_T total_len = 0;
+
+    if (in_vim9script()
+	    && (check_for_buffer_arg(argvars, 0) == FAIL
+		|| check_for_lnum_arg(argvars, 1) == FAIL
+		|| check_for_opt_lnum_arg(argvars, 2) == FAIL))
+	return;
+
+    if (argvars[1].v_type != VAR_UNKNOWN)
+	buf = get_buf_arg(&argvars[1]);
+    if (buf == NULL)
+	goto exit;
+
+    if (argvars[0].v_type == VAR_STRING || argvars[0].v_type == VAR_NUMBER)
+    {
+	linenr_T lnum = tv_get_lnum_buf(&argvars[0], buf);
+
+	if (lnum == 0)
+	    goto exit;
+
+	total_len = ml_get_buf_len(buf, lnum);
+    }
+    else if (argvars[0].v_type == VAR_LIST)
+    {
+	listitem_T *li;
+
+	FOR_ALL_LIST_ITEMS(argvars[0].vval.v_list, li)
+	    total_len += ml_get_buf_len(buf, li->li_tv.vval.v_number);
+    }
+    else if (argvars[0].v_type == VAR_TUPLE)
+    {
+	for (int i = 0; i < tuple_len(argvars[0].vval.v_tuple); i++)
+	{
+	    typval_T *tv = TUPLE_ITEM(argvars[0].vval.v_tuple, i);
+
+	    total_len += ml_get_buf_len(buf, tv->vval.v_number);
+	}
+    }
+
+exit:
+    rettv->v_type = VAR_NUMBER;
+    rettv->vval.v_number = total_len;
+}
+
 #endif  // FEAT_EVAL
 
 #if defined(FEAT_PYTHON) || defined(FEAT_PYTHON3)
