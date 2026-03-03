@@ -3807,3 +3807,9 @@ EXTERN char e_no_redraw_listener_callbacks_defined[]
 #endif
 EXTERN char e_leadtab_requires_tab[]
 	INIT(= N_("E1572: 'listchars' field \"leadtab\" requires \"tab\" to be specified"));
+EXTERN char e_not_enough_arguments_highlight_copy_str[]
+	INIT(= N_("E1573: Not enough arguments: \":highlight copy %s\""));
+EXTERN char e_too_many_arguments_highlight_copy_str[]
+	INIT(= N_("E1574: Too many arguments: \":highlight copy %s\""));
+EXTERN char e_cannot_copy_none_highlight[]
+	INIT(= N_("E1575: Cannot copy \"NONE\" highlight group"));

@@ -750,6 +750,85 @@ lookup_color(int idx, int foreground, int *boldp)
 }
 
 /*
+ * Copy highight group 'from_hg' to 'to_hg'. If 'to_hg' already exists, then it
+ * will have its settings overwritten.
+ */
+    static void
+highlight_group_copy(
+	char_u *from_hg,
+	int from_len,
+	char_u *to_hg,
+	int to_len)
+{
+    int from_id;
+    int to_id;
+
+    if (STRNCMP(from_hg, "NONE", 4) == 0 || STRNCMP(to_hg, "NONE", 4) == 0)
+    {
+	emsg(_(e_cannot_copy_none_highlight));
+	return;
+    }
+
+    from_id = syn_check_group(from_hg, from_len);
+    to_id = syn_check_group(to_hg, to_len);
+
+    if (from_id > 0 && to_id > 0)
+    {
+	hl_group_T *from = &HL_TABLE()[from_id - 1];
+	hl_group_T *to = &HL_TABLE()[to_id - 1];
+
+	highlight_clear(to_id - 1);
+
+	*to = *from;
+
+	to->sg_name = NULL;
+	to->sg_name_u = NULL;
+	to->sg_start = NULL;
+	to->sg_stop = NULL;
+
+#ifdef FEAT_GUI
+	to->sg_font = NOFONT;
+# ifdef FEAT_XFONTSET
+	to->sg_fontset = NOFONTSET;
+# endif
+	to->sg_font_name = NULL;
+#endif
+
+#if defined(FEAT_GUI) || defined(FEAT_EVAL)
+	to->sg_gui_fg_name = NULL;
+	to->sg_gui_bg_name = NULL;
+	to->sg_gui_sp_name = NULL;
+#endif
+
+#define SAVE(m) \
+	do { \
+	    if (from->m != NULL) \
+	    { \
+		to->m = vim_strsave(from->m); \
+		if (to->m == NULL) \
+		{ \
+		    highlight_clear(to_id - 1); \
+		    emsg(_(e_out_of_memory)); \
+		    return; \
+		} \
+	    } \
+	} while (false)
+
+	SAVE(sg_name);
+	SAVE(sg_name_u);
+	SAVE(sg_start);
+	SAVE(sg_stop);
+
+#undef SAVE
+
+#ifdef FEAT_EVAL
+	to->sg_script_ctx = current_sctx;
+	to->sg_script_ctx.sc_lnum += SOURCING_LNUM;
+#endif
+    }
+}
+
+/*
  * Link highlight group 'from_hg' to 'to_hg'.
  * 'dodefault' is set to TRUE for ":highlight default link".
  * 'forceit' is set to TRUE for ":highlight! link"
@@ -1639,6 +1718,7 @@ do_highlight(
 #if defined(FEAT_GUI) || defined(FEAT_TERMGUICOLORS)
     int		did_highlight_changed = FALSE;
 #endif
+    bool	docopy = false;
 
     // If no argument, list current highlighting.
     if (!init && ends_excmd2(line - 1, line))
@@ -1662,11 +1742,13 @@ do_highlight(
 	linep = skipwhite(name_end);
     }
 
-    // Check for "clear" or "link" argument.
+    // Check for "clear", "copy", or "link" argument.
     if (STRNCMP(line, "clear", name_end - line) == 0)
 	doclear = TRUE;
     if (STRNCMP(line, "link", name_end - line) == 0)
 	dolink = TRUE;
+    if (STRNCMP(line, "copy", name_end - line) == 0)
+	docopy = true;
 
     // ":highlight {group-name}": list highlighting for one group.
     if (!doclear && !dolink && ends_excmd2(line, linep))
@@ -1679,8 +1761,8 @@ do_highlight(
 	return;
     }
 
-    // Handle ":highlight link {from} {to}" command.
-    if (dolink)
+    // Handle ":highlight link/copy {from} {to}" command.
+    if (dolink || docopy)
     {
 	char_u	    *from_start = linep;
 	char_u	    *from_end;
@@ -1695,13 +1777,19 @@ do_highlight(
 
 	if (ends_excmd2(line, from_start) || ends_excmd2(line, to_start))
 	{
-	    semsg(_(e_not_enough_arguments_highlight_link_str), from_start);
+	    if (dolink)
+		semsg(_(e_not_enough_arguments_highlight_link_str), from_start);
+	    else
+		semsg(_(e_not_enough_arguments_highlight_copy_str), from_start);
 	    return;
 	}
 
 	if (!ends_excmd2(line, skipwhite(to_end)))
 	{
-	    semsg(_(e_too_many_arguments_highlight_link_str), from_start);
+	    if (dolink)
+		semsg(_(e_too_many_arguments_highlight_link_str), from_start);
+	    else
+		semsg(_(e_too_many_arguments_highlight_copy_str), from_start);
 	    return;
 	}
 
