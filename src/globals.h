@@ -2139,3 +2139,15 @@ EXTERN bool inside_redraw_on_start_cb INIT(= false);
 
 // If greater than zero, then silence the W23/W24 warning.
 EXTERN int silence_w23_w24_msg INIT( = 0);
+
+typedef enum
+{
+    INCCOMMAND_DISABLED,
+    INCCOMMAND_SPLIT,
+    INCCOMMAND_NOSPLIT
+} inccommand_T;
+
+EXTERN inccommand_T inccommand INIT(=INCCOMMAND_DISABLED);
+
+// previous substitute pattern
+EXTERN char_u *old_sub INIT(= NULL);

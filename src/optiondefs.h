@@ -1469,6 +1469,9 @@ static struct vimoption options[] =
 			    {(char_u *)0L, (char_u *)0L}
 #endif
 			    SCTX_INIT},
+    {"inccommand", "icm",   P_STRING|P_VI_DEF,
+			    (char_u *)&p_icm, PV_NONE, did_set_inccommand, expand_set_inccommand,
+			    {(char_u *)"nosplit", (char_u *)0L} SCTX_INIT},
     {"incsearch",   "is",   P_BOOL|P_VI_DEF|P_VIM,
 			    (char_u *)&p_is, PV_NONE, NULL, NULL,
 			    {(char_u *)FALSE, (char_u *)0L} SCTX_INIT},

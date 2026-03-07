@@ -3933,22 +3933,7 @@ check_secure(void)
     return FALSE;
 }
 
-static char_u	*old_sub = NULL;	// previous substitute pattern
-static int	global_need_beginline;	// call beginline() after ":g"
-
-/*
- * Flags that are kept between calls to :substitute.
- */
-typedef struct {
-    int	do_all;		// do multiple substitutions per line
-    int	do_ask;		// ask for confirmation
-    int	do_count;	// count only
-    int	do_error;	// if false, ignore errors
-    int	do_print;	// print last line with subs.
-    int	do_list;	// list last line with subs.
-    int	do_number;	// list last line with line nr
-    int	do_ic;		// ignore case flag
-} subflags_T;
+static int global_need_beginline; // call beginline() after ":g"
 
 /*
  * Skip over the "sub" part in :s/pat/sub/ where "delimiter" is the separating
@@ -3973,7 +3958,7 @@ skip_substitute(char_u *start, int delimiter)
     return p;
 }
 
-    static int
+    int
 check_regexp_delim(int c)
 {
     if (SAFE_isalpha(c))

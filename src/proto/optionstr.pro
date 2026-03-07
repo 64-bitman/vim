@@ -126,6 +126,8 @@ int expand_set_mousemodel(optexpand_T *args, int *numMatches, char_u ***matches)
 char *did_set_mouseshape(optset_T *args);
 char *did_set_nrformats(optset_T *args);
 int expand_set_nrformats(optexpand_T *args, int *numMatches, char_u ***matches);
+char *did_set_inccommand(optset_T *args);
+int expand_set_inccommand(optexpand_T *args, int *numMatches, char_u ***matches);
 char *did_set_optexpr(optset_T *args);
 char *did_set_pastetoggle(optset_T *args);
 char *did_set_previewpopup(optset_T *args);

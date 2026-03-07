@@ -5338,3 +5338,17 @@ typedef enum
     TERM_SYNC_OUTPUT_OFF = 1 << 2,
     TERM_SYNC_OUTPUT_FLUSH = 1 << 3,
 } term_sync_output_T;
+
+/*
+ * Flags that are kept between calls to :substitute.
+ */
+typedef struct {
+    int	do_all;		// do multiple substitutions per line
+    int	do_ask;		// ask for confirmation
+    int	do_count;	// count only
+    int	do_error;	// if false, ignore errors
+    int	do_print;	// print last line with subs.
+    int	do_list;	// list last line with subs.
+    int	do_number;	// list last line with line nr
+    int	do_ic;		// ignore case flag
+} subflags_T;

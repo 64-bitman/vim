@@ -40,6 +40,7 @@ static char *(p_dip_algorithm_values[]) = {"myers", "minimal", "patience", "hist
 static char *(p_dip_inline_values[]) = {"none", "simple", "char", "word", NULL};
 #endif
 static char *(p_nf_values[]) = {"bin", "octal", "hex", "alpha", "unsigned", "blank", NULL};
+static char *(p_icm_values[]) = {"nosplit", "split", NULL};
 static char *(p_ff_values[]) = {FF_UNIX, FF_DOS, FF_MAC, NULL};
 #ifdef HAVE_CLIPMETHOD
 // Note: Keep this in sync with did_set_clipboard()
@@ -3379,6 +3380,30 @@ expand_set_nrformats(optexpand_T *args, int *numMatches, char_u ***matches)
 	    args,
 	    p_nf_values,
 	    ARRAY_LENGTH(p_nf_values) - 1,
+	    numMatches,
+	    matches);
+}
+
+    char *
+did_set_inccommand(optset_T *args UNUSED)
+{
+    if (STRCMP(p_icm, "nosplit") == 0)
+	inccommand = INCCOMMAND_NOSPLIT;
+    else if (STRCMP(p_icm, "split") == 0)
+	inccommand = INCCOMMAND_SPLIT;
+    else
+	return e_invalid_argument;
+
+    return NULL;
+}
+
+    int
+expand_set_inccommand(optexpand_T *args, int *numMatches, char_u ***matches)
+{
+    return expand_set_opt_string(
+	    args,
+	    p_icm_values,
+	    ARRAY_LENGTH(p_icm_values) - 1,
 	    numMatches,
 	    matches);
 }

@@ -735,6 +735,7 @@ EXTERN int	p_inf;		// 'infercase'
 #if defined(FEAT_FIND_ID) && defined(FEAT_EVAL)
 EXTERN char_u	*p_inex;	// 'includeexpr'
 #endif
+EXTERN char_u	*p_icm;		// 'inccommand'
 EXTERN int	p_is;		// 'incsearch'
 #if defined(FEAT_EVAL)
 EXTERN char_u	*p_inde;	// 'indentexpr'
