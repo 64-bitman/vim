@@ -863,6 +863,7 @@ typedef struct memline
     int		ml_numchunks;
     int		ml_usedchunks;
 #endif
+
 } memline_T;
 
 // Values for the flags argument of ml_delete_flags().

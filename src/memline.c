@@ -54,9 +54,12 @@ typedef struct block0		ZERO_BL;    // contents of the first block
 typedef struct pointer_block	PTR_BL;	    // contents of a pointer block
 typedef struct data_block	DATA_BL;    // contents of a data block
 typedef struct pointer_entry	PTR_EN;	    // block/line-count pair
+typedef struct transaction_block    TRN_BL;
+typedef struct transaction_change   TRN_CH;
 
 #define DATA_ID	       (('d' << 8) + 'a')   // data block id
 #define PTR_ID	       (('p' << 8) + 't')   // pointer block id
+#define TRN_ID	       (('t' << 8) + 'r')   // transaction block id
 #define BLOCK0_ID0     'b'		    // block 0 id 0
 #define BLOCK0_ID1     '0'		    // block 0 id 1
 #define BLOCK0_ID1_C0  'c'		    // block 0 id 1 'cm' 0
@@ -122,6 +125,23 @@ struct data_block
 				// followed by empty space up to db_txt_start
 				// followed by the text in the lines until
 				// end of page
+};
+
+struct transaction_change
+{
+    linenr_T	tc_linenr;
+    unsigned	tc_len;
+    char_u	tc_txt[1];
+};
+
+/*
+ *
+ */
+struct transaction_block
+{
+    short_u	tb_id;		// ID for transaction block: TRN_ID
+    unsigned	tb_change_count;
+    TRN_CH	tb_changes[1];
 };
 
 /*
