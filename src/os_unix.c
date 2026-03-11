@@ -9121,6 +9121,8 @@ socket_server_init(char_u *name)
     int			num_printed;
     int			fd;
     int			i = 1;
+    bool		explicit = false;
+    bool		success = false;
 
     if (socket_server_valid() || (name == NULL && socket_server_path == NULL))
 	return FAIL;
@@ -9146,8 +9148,11 @@ socket_server_init(char_u *name)
     // socket.
     if (name[0] == '/' || STRNCMP(name, "./", 2) == 0 ||
 	    STRNCMP(name, "../", 3) == 0)
+    {
 	num_printed =
 	    vim_snprintf((char *)path, sizeof(addr.sun_path), "%s", name);
+	explicit = true;
+    }
     else
     {
 	const char_u	*dir;
@@ -9215,13 +9220,16 @@ socket_server_init(char_u *name)
 
     vim_snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
 
-    // Bind to a suitable path/address
-    while (i < 1000)
+    // Bind to a suitable path/address, do not loop if path is explicitly
+    // provided.
+    do
     {
-	if (bind(fd, (struct sockaddr *)&addr, sizeof(addr))
-		== -1)
+	if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
 	{
 	    int fd2;
+
+	    if (explicit)
+		break;
 
 	    if (errno != EADDRINUSE)
 	    {
@@ -9235,13 +9243,17 @@ socket_server_init(char_u *name)
 	    if (fd2 == -1)
 	    {
 		mch_remove(addr.sun_path);
+		i++;
 		continue;
 	    }
 	    else
 		close(fd2);
 	}
 	else
+	{
+	    success = true;
 	    break;
+	}
 
 	num_printed = vim_snprintf(addr.sun_path, sizeof(addr.sun_path),
 		"%s%d", path, i);
@@ -9254,9 +9266,9 @@ socket_server_init(char_u *name)
 	}
 
 	i++;
-    }
+    } while (i < 1000);
 
-    if (i >= 1000)
+    if (!success)
     {
 	emsg(_(e_socket_server_unavailable));
 	goto fail;
