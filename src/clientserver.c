@@ -300,6 +300,15 @@ prepare_server(mparm_T *parmp)
 #  endif
 	vim_free(parmp->servername);
     }
+#ifdef FEAT_SOCKETSERVER
+    // We don't need to delay starting the socket server, so start it
+    // immediately.
+    else if (clientserver_method == CLIENTSERVER_METHOD_SOCKET)
+    {
+	if (socket_server_init(parmp->servername) == OK)
+	    TIME_MSG("initialize socket server");
+    }
+#endif
 #  ifdef FEAT_X11
     else
 	serverDelayedStartName = parmp->servername;
