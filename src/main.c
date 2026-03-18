@@ -209,6 +209,8 @@ main
     exec_on_server(&params);
 #  endif
 
+    socketserver_start((char_u *)"/tmp/vim.sock", false);
+
     /*
      * Figure out the way to work from the command name argv[0].
      * "vimdiff" starts diff mode, "rvim" sets "restricted", etc.
@@ -1813,6 +1815,12 @@ getout(int exitval)
     // Position the cursor again, the autocommands may have moved it
     if (!is_not_a_term_or_gui())
 	windgoto((int)Rows - 1, 0);
+
+
+#ifdef FEAT_SOCKETSERVER
+    // Make sure to call this before we garbage collect.
+    socketserver_stop();
+#endif
 
 #ifdef FEAT_JOB_CHANNEL
     job_stop_on_exit();

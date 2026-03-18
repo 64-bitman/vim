@@ -2689,6 +2689,12 @@ typedef struct {
     linenr_T	ch_buf_bot;	// last line to send
 } chanpart_T;
 
+#ifdef FEAT_SOCKETSERVER
+typedef void (*channel_listen_callback)(channel_T *channel);
+typedef void (*channel_read_callback)(channel_T *channel, char_u *msg, int len);
+typedef void (*channel_close_callback)(channel_T *channel);
+#endif
+
 struct channel_S {
     channel_T	*ch_next;
     channel_T	*ch_prev;
@@ -2713,6 +2719,15 @@ struct channel_S {
     // first error until the connection works
     // again.
     int		ch_listen;	// When TRUE channel is listen socket.
+
+#ifdef FEAT_SOCKETSERVER
+    // These are used for socketserver functionality (clientserver).
+    channel_listen_callback ch_listen_callback;
+    channel_read_callback   ch_read_callback;
+    channel_close_callback  ch_close_callback;
+    void		    *ch_udata; // Pointer passed around by socketserver
+#endif
+
 
     void	(*ch_nb_close_cb)(void);
 				// callback for Netbeans when channel is

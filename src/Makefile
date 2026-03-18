@@ -1558,6 +1558,7 @@ BASIC_SRC = \
 	spell.c \
 	spellfile.c \
 	spellsuggest.c \
+	socketserver.c \
 	strings.c \
 	syntax.c \
 	tabpanel.c \
@@ -1738,6 +1739,7 @@ OBJ_COMMON = \
 	objects/spell.o \
 	objects/spellfile.o \
 	objects/spellsuggest.o \
+	objects/socketserver.o \
 	objects/strings.o \
 	objects/syntax.o \
 	objects/tabpanel.o \
@@ -3577,6 +3579,9 @@ objects/spellfile.o: spellfile.c
 
 objects/spellsuggest.o: spellsuggest.c
 	$(CCC) -o $@ spellsuggest.c
+
+objects/socketserver.o: socketserver.c
+	$(CCC) -o $@ socketserver.c
 
 objects/strings.o: strings.c
 	$(CCC) -o $@ strings.c

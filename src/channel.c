@@ -335,7 +335,12 @@ channel_free(channel_T *channel)
     static int
 channel_may_free(channel_T *channel)
 {
-    if (!channel_still_useful(channel))
+    // Don't check for further action if channel is handled by socketserver.
+    if (
+#ifdef FEAT_CLIENTSERVER
+	    channel->ch_listen_callback == NULL &&
+#endif
+	    !channel_still_useful(channel))
     {
 	channel_free(channel);
 	return TRUE;
@@ -820,7 +825,7 @@ channel_connect(
  * Returns the channel for success.
  * Returns NULL for failure.
  */
-    static channel_T *
+    channel_T *
 channel_open_unix(
 	const char *path,
 	void (*nb_close_cb)(void))
@@ -1291,17 +1296,83 @@ channel_set_options(channel_T *channel, jobopt_T *opt)
 }
 
 /*
+ * Parse the address and return the IP address + port or path (if Unix domain
+ * socket, then port is set to -1). May modify "address". Returns OK on
+ * success and FAIL on failure.
+ */
+    int
+channel_parse_address(char_u **address, int *port, bool listen)
+{
+    char_u  *p;
+    char    *rest;
+    bool    is_unix = false;
+    bool    is_ipv6 = false;
+
+    if (**address == NUL)
+    {
+	semsg(_(e_invalid_argument_str), *address);
+	return FAIL;
+    }
+
+    if (!STRNCMP(*address, "unix:", 5))
+    {
+	is_unix = true;
+	*address += 5;
+    }
+    else if (**address == '[')
+    {
+	// ipv6 address
+	is_ipv6 = true;
+	p = vim_strchr(*address + 1, ']');
+	if (p == NULL || *++p != ':')
+	{
+	    semsg(_(e_invalid_argument_str), *address);
+	    return FAIL;
+	}
+    }
+    else
+    {
+	// ipv4 address
+	p = vim_strchr(*address, ':');
+	if (p == NULL)
+	{
+	    semsg(_(e_invalid_argument_str), *address);
+	    return FAIL;
+	}
+    }
+
+    if (!is_unix)
+    {
+	*port = strtol((char *)(p + 1), &rest, 10);
+        if ((listen && *port < 0) || (!listen && *port <= 0)
+		|| *port >= 65536 || *rest != NUL)
+        {
+	    semsg(_(e_invalid_argument_str), *address);
+	    return FAIL;
+	}
+	if (is_ipv6)
+	{
+	    // strip '[' and ']'
+	    ++(*address);
+	    *(p - 1) = NUL;
+	}
+	else
+	    *p = NUL;
+    }
+    else
+	*port = -1;
+    return OK;
+}
+
+/*
  * Implements ch_open().
  */
     static channel_T *
 channel_open_func(typval_T *argvars)
 {
     char_u	*address;
-    char_u	*p;
-    char	*rest;
     int		port = 0;
-    int		is_ipv6 = FALSE;
-    int		is_unix = FALSE;
+    bool	is_unix = false;
     jobopt_T    opt;
     channel_T	*channel = NULL;
 
@@ -1315,56 +1386,10 @@ channel_open_func(typval_T *argvars)
 	    && check_for_nonnull_dict_arg(argvars, 1) == FAIL)
 	return NULL;
 
-    if (*address == NUL)
-    {
-	semsg(_(e_invalid_argument_str), address);
+    if (channel_parse_address(&address, &port, false) == FAIL)
 	return NULL;
-    }
-
-    if (!STRNCMP(address, "unix:", 5))
-    {
-	is_unix = TRUE;
-	address += 5;
-    }
-    else if (*address == '[')
-    {
-	// ipv6 address
-	is_ipv6 = TRUE;
-	p = vim_strchr(address + 1, ']');
-	if (p == NULL || *++p != ':')
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-    }
-    else
-    {
-	// ipv4 address
-	p = vim_strchr(address, ':');
-	if (p == NULL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-    }
-
-    if (!is_unix)
-    {
-	port = strtol((char *)(p + 1), &rest, 10);
-	if (port <= 0 || port >= 65536 || *rest != NUL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	if (is_ipv6)
-	{
-	    // strip '[' and ']'
-	    ++address;
-	    *(p - 1) = NUL;
-	}
-	else
-	    *p = NUL;
-    }
+    if (port == -1)
+	is_unix = true;
 
     // parse options
     clear_job_options(&opt);
@@ -1401,10 +1426,8 @@ theend:
 channel_listen_func(typval_T *argvars)
 {
     char_u	*address;
-    char_u	*p;
-    char	*rest;
     int		port;
-    int		is_unix = FALSE;
+    bool	is_unix = false;
     jobopt_T    opt;
     channel_T	*channel = NULL;
 
@@ -1418,54 +1441,10 @@ channel_listen_func(typval_T *argvars)
 	    && check_for_nonnull_dict_arg(argvars, 1) == FAIL)
 	return NULL;
 
-    if (*address == NUL)
-    {
-	semsg(_(e_invalid_argument_str), address);
+    if (channel_parse_address(&address, &port, true) == FAIL)
 	return NULL;
-    }
-
-    if (!STRNCMP(address, "unix:", 5))
-    {
-	is_unix = TRUE;
-	address += 5;
-	port = 0;
-    }
-    else if (*address == '[')
-    {
-	// ipv6 address
-	p = vim_strchr(address + 1, ']');
-	if (p == NULL || *++p != ':')
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	port = strtol((char *)(p + 1), &rest, 10);
-	if (port < 0 || port >= 65536 || *rest != NUL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	// strip '[' and ']'
-	++address;
-	*(p - 1) = NUL;
-    }
-    else
-    {
-	// ipv4 address
-	p = vim_strchr(address, ':');
-	if (p == NULL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	port = strtol((char *)(p + 1), &rest, 10);
-	if (port < 0 || port >= 65536 || *rest != NUL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	*p = NUL;
-    }
+    if (port == -1)
+	is_unix = true;
 
     // parse options
     clear_job_options(&opt);
@@ -3391,8 +3370,22 @@ may_invoke_callback(channel_T *channel, ch_part_T part)
 	// nothing to read on RAW or NL channel
 	return FALSE;
     }
+#ifdef FEAT_CLIENTSERVER
+    else if (channel->ch_read_callback != NULL)
+    {
+	int outlen = 0;
+	// Channel is created by socketserver, pass the raw bytes directly.
+	msg = channel_get_all(channel, part, &outlen);
+
+	if (msg == NULL)
+	    return FALSE;
+
+	channel->ch_read_callback(channel, msg, outlen);
+    }
+#endif
     else
     {
+
 	// If there is no callback or buffer drop the message.
 	if (callback == NULL && buffer == NULL)
 	{
@@ -3754,6 +3747,11 @@ channel_close(channel_T *channel, int invoke_close_cb)
     ch_close_part(channel, PART_OUT);
     ch_close_part(channel, PART_ERR);
 
+#ifdef FEAT_CLIENTSERVER
+    if (channel->ch_close_callback != NULL && invoke_close_cb)
+	channel->ch_close_callback(channel);
+    else
+#endif
     if (invoke_close_cb)
     {
 	ch_part_T	part;
@@ -4223,6 +4221,16 @@ channel_read(channel_T *channel, ch_part_T part, char *func)
 	    }
 	    newchannel->CH_SOCK_FD = (sock_T)newfd;
 	    newchannel->ch_to_be_closed |= (1U << PART_SOCK);
+
+#ifdef FEAT_CLIENTSERVER
+	    if (channel->ch_listen_callback != NULL)
+	    {
+		// This channel was created by the socketserver, call the C
+		// callback instead.
+		channel->ch_listen_callback(newchannel);
+		return;
+	    }
+#endif
 
 	    if (client.ss_family == AF_INET)
 	    {

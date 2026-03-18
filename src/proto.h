@@ -276,6 +276,7 @@ void mbyte_im_set_active(int active_arg);
 # ifdef FEAT_JOB_CHANNEL
 #  include "job.pro"
 #  include "channel.pro"
+#  include "socketserver.pro"
 # endif
 
 # ifdef FEAT_EVAL
