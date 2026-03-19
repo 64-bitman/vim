@@ -66,6 +66,7 @@ static ch_mode_T channel_get_mode(channel_T *channel, ch_part_T part);
 static int channel_get_timeout(channel_T *channel, ch_part_T part);
 static ch_part_T channel_part_send(channel_T *channel);
 static ch_part_T channel_part_read(channel_T *channel);
+static void channel_server_exec(channel_T *channel, dict_T *message);
 
 #define FOR_ALL_CHANNELS(ch) \
     for ((ch) = first_channel; (ch) != NULL; (ch) = (ch)->ch_next)
@@ -1290,30 +1291,23 @@ channel_set_options(channel_T *channel, jobopt_T *opt)
     channel->ch_part[PART_IN].ch_io = opt->jo_io[PART_IN];
 }
 
+
 /*
- * Implements ch_open().
+ * Parse the channel address and return the hostname or path. Store the port in
+ * "port" (if any), and the length of the address in "len". Returns NULL on
+ * failure.
  */
-    static channel_T *
-channel_open_func(typval_T *argvars)
+    static char_u *
+channel_parse_address(
+	char_u	*address,
+	int	*len,
+	int	*port,
+	bool	*is_unix,
+	bool	listen)
 {
-    char_u	*address;
-    char_u	*p;
-    char	*rest;
-    int		port = 0;
-    int		is_ipv6 = FALSE;
-    int		is_unix = FALSE;
-    jobopt_T    opt;
-    channel_T	*channel = NULL;
-
-    if (in_vim9script()
-	    && (check_for_string_arg(argvars, 0) == FAIL
-		|| check_for_opt_dict_arg(argvars, 1) == FAIL))
-	return NULL;
-
-    address = tv_get_string(&argvars[0]);
-    if (argvars[1].v_type != VAR_UNKNOWN
-	    && check_for_nonnull_dict_arg(argvars, 1) == FAIL)
-	return NULL;
+    char_u  *p;
+    char    *rest;
+    bool    is_ipv6 = false;
 
     if (*address == NUL)
     {
@@ -1323,8 +1317,10 @@ channel_open_func(typval_T *argvars)
 
     if (!STRNCMP(address, "unix:", 5))
     {
-	is_unix = TRUE;
+	*is_unix = true;
 	address += 5;
+	*len = STRLEN(address);
+	return address;
     }
     else if (*address == '[')
     {
@@ -1348,23 +1344,55 @@ channel_open_func(typval_T *argvars)
 	}
     }
 
-    if (!is_unix)
+    *port = strtol((char *)(p + 1), &rest, 10);
+    if ((listen && *port < 0) || (!listen && *port <= 0)
+	    || *port >= 65536 || *rest != NUL)
     {
-	port = strtol((char *)(p + 1), &rest, 10);
-	if (port <= 0 || port >= 65536 || *rest != NUL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	if (is_ipv6)
-	{
-	    // strip '[' and ']'
-	    ++address;
-	    *(p - 1) = NUL;
-	}
-	else
-	    *p = NUL;
+	semsg(_(e_invalid_argument_str), address);
+	return NULL;
     }
+    if (is_ipv6)
+    {
+	// Do not include '[' and ']'
+	++address;
+	*len = (p - 1) - address;
+    }
+    else
+	*len = p - address;
+
+    *is_unix = false;
+
+    return address;
+}
+
+/*
+ * Implements ch_open().
+ */
+    static channel_T *
+channel_open_func(typval_T *argvars)
+{
+    char_u	*address;
+    int		address_len;
+    int		port;
+    bool	is_unix;
+    jobopt_T    opt;
+    channel_T	*channel = NULL;
+
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_opt_dict_arg(argvars, 1) == FAIL))
+	return NULL;
+
+    if (argvars[1].v_type != VAR_UNKNOWN
+	    && check_for_nonnull_dict_arg(argvars, 1) == FAIL)
+	return NULL;
+
+    address = channel_parse_address(tv_get_string(&argvars[0]),
+	    &address_len, &port, &is_unix, false);
+    if (address == NULL)
+	return NULL;
+
+    vim_snprintf((char *)IObuff, IOSIZE, "%.*s", address_len, address);
 
     // parse options
     clear_job_options(&opt);
@@ -1372,7 +1400,7 @@ channel_open_func(typval_T *argvars)
     opt.jo_timeout = 2000;
     if (get_job_options(&argvars[1], &opt,
 	    JO_MODE_ALL + JO_CB_ALL + JO_TIMEOUT_ALL
-		+ (is_unix? 0 : JO_WAITTIME), 0) == FAIL)
+		+ (is_unix ? 0 : JO_WAITTIME), 0) == FAIL)
 	goto theend;
     if (opt.jo_timeout < 0)
     {
@@ -1381,9 +1409,9 @@ channel_open_func(typval_T *argvars)
     }
 
     if (is_unix)
-	channel = channel_open_unix((char *)address, NULL);
+	channel = channel_open_unix((char *)IObuff, NULL);
     else
-	channel = channel_open((char *)address, port, opt.jo_waittime, NULL);
+	channel = channel_open((char *)IObuff, port, opt.jo_waittime, NULL);
     if (channel != NULL)
     {
 	opt.jo_set = JO_ALL;
@@ -1401,10 +1429,9 @@ theend:
 channel_listen_func(typval_T *argvars)
 {
     char_u	*address;
-    char_u	*p;
-    char	*rest;
+    int		address_len;
     int		port;
-    int		is_unix = FALSE;
+    bool	is_unix;
     jobopt_T    opt;
     channel_T	*channel = NULL;
 
@@ -1413,59 +1440,16 @@ channel_listen_func(typval_T *argvars)
 		|| check_for_opt_dict_arg(argvars, 1) == FAIL))
 	return NULL;
 
-    address = tv_get_string(&argvars[0]);
     if (argvars[1].v_type != VAR_UNKNOWN
 	    && check_for_nonnull_dict_arg(argvars, 1) == FAIL)
 	return NULL;
 
-    if (*address == NUL)
-    {
-	semsg(_(e_invalid_argument_str), address);
+    address = channel_parse_address(tv_get_string(&argvars[0]),
+	    &address_len, &port, &is_unix, true);
+    if (address == NULL)
 	return NULL;
-    }
 
-    if (!STRNCMP(address, "unix:", 5))
-    {
-	is_unix = TRUE;
-	address += 5;
-	port = 0;
-    }
-    else if (*address == '[')
-    {
-	// ipv6 address
-	p = vim_strchr(address + 1, ']');
-	if (p == NULL || *++p != ':')
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	port = strtol((char *)(p + 1), &rest, 10);
-	if (port < 0 || port >= 65536 || *rest != NUL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	// strip '[' and ']'
-	++address;
-	*(p - 1) = NUL;
-    }
-    else
-    {
-	// ipv4 address
-	p = vim_strchr(address, ':');
-	if (p == NULL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	port = strtol((char *)(p + 1), &rest, 10);
-	if (port < 0 || port >= 65536 || *rest != NUL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	*p = NUL;
-    }
+    vim_snprintf((char *)IObuff, IOSIZE, "%.*s", address_len, address);
 
     // parse options
     clear_job_options(&opt);
@@ -1481,9 +1465,9 @@ channel_listen_func(typval_T *argvars)
     }
 
     if (is_unix)
-	channel = channel_listen_unix((char *)address, NULL);
+	channel = channel_listen_unix((char *)IObuff, NULL);
     else
-	channel = channel_listen((char *)address, port, NULL);
+	channel = channel_listen((char *)IObuff, port, NULL);
     if (channel != NULL)
     {
 	opt.jo_set = JO_ALL;
@@ -2604,7 +2588,8 @@ channel_parse_json(channel_T *channel, ch_part_T part)
 	    clear_tv(&listtv);
 	}
 	else if (chanpart->ch_mode != CH_MODE_LSP && chanpart->ch_mode != CH_MODE_DAP
-	      && (listtv.v_type != VAR_LIST || listtv.vval.v_list->lv_len < 2))
+	      && (listtv.v_type != VAR_LIST || listtv.vval.v_list->lv_len < 2)
+	      && !channel->ch_clientserver)
 	{
 	    if (listtv.v_type != VAR_LIST)
 		ch_error(channel, "Did not receive a list, discarding");
@@ -2834,7 +2819,13 @@ channel_get_json(
 	list_T	    *l;
 	typval_T    *tv;
 
-	if (channel->ch_part[part].ch_mode != CH_MODE_LSP
+	if (channel->ch_clientserver)
+	{
+	    if (item->jq_value->v_type != VAR_DICT)
+		goto nextitem;
+	    tv = item->jq_value;
+	}
+	else if (channel->ch_part[part].ch_mode != CH_MODE_LSP
 		&& channel->ch_part[part].ch_mode != CH_MODE_DAP)
 	{
 	    l = item->jq_value->vval.v_list;
@@ -2892,12 +2883,13 @@ channel_get_json(
 	    }
 	}
 
-	if ((without_callback || !item->jq_no_callback)
+	if (channel->ch_clientserver
+		|| ((without_callback || !item->jq_no_callback)
 	    && ((id > 0 && tv->v_type == VAR_NUMBER && tv->vval.v_number == id)
 	      || (id <= 0 && (tv->v_type != VAR_NUMBER
 		 || tv->vval.v_number == 0
 		 || !channel_has_block_id(
-				&channel->ch_part[part], tv->vval.v_number)))))
+				&channel->ch_part[part], tv->vval.v_number))))))
 	{
 	    *rettv = item->jq_value;
 	    if (tv->v_type == VAR_NUMBER)
@@ -3358,6 +3350,14 @@ may_invoke_callback(channel_T *channel, ch_part_T part)
 	    }
 
 	    argv[1] = *listtv;
+	}
+	else if (channel->ch_clientserver)
+	{
+	    dict_T *d = listtv->vval.v_dict;
+
+	    channel_server_exec(channel, d);
+	    free_tv(listtv);
+	    return TRUE;
 	}
 	else
 	{
@@ -4223,6 +4223,15 @@ channel_read(channel_T *channel, ch_part_T part, char *func)
 	    }
 	    newchannel->CH_SOCK_FD = (sock_T)newfd;
 	    newchannel->ch_to_be_closed |= (1U << PART_SOCK);
+
+	    if (channel->ch_clientserver)
+	    {
+		newchannel->ch_clientserver = true;
+		newchannel->ch_part[PART_SOCK].ch_mode = CH_MODE_JSON;
+		newchannel->ch_nonblock = true;
+
+		return;
+	    }
 
 	    if (client.ss_family == AF_INET)
 	    {
@@ -5267,7 +5276,8 @@ channel_poll_check(int ret_in, void *fds_in)
 #if !defined(MSWIN) && defined(HAVE_SELECT)
 
 /*
- * The "fd_set" type is hidden to avoid problems with the function proto.
+ * The "fd_set" type is hidden to avoid problems with the function proto. If
+ * "cs" is true, then only do clientserver channels
  */
     int
 channel_select_setup(
@@ -5275,7 +5285,8 @@ channel_select_setup(
 	void *rfds_in,
 	void *wfds_in,
 	struct timeval *tv,
-	struct timeval **tvp)
+	struct timeval **tvp,
+	bool cs)
 {
     int		maxfd = maxfd_in;
     channel_T	*channel;
@@ -5285,6 +5296,8 @@ channel_select_setup(
 
     FOR_ALL_CHANNELS(channel)
     {
+	if (cs && !channel->ch_clientserver)
+	    continue;
 	for (part = PART_SOCK; part < PART_IN; ++part)
 	{
 	    sock_T fd = channel->ch_part[part].ch_fd;
@@ -5320,10 +5333,11 @@ channel_select_setup(
 }
 
 /*
- * The "fd_set" type is hidden to avoid problems with the function proto.
+ * The "fd_set" type is hidden to avoid problems with the function proto. If
+ * "cs" is true, then only do clientserver channels
  */
     int
-channel_select_check(int ret_in, void *rfds_in, void *wfds_in)
+channel_select_check(int ret_in, void *rfds_in, void *wfds_in, bool cs)
 {
     int		ret = ret_in;
     channel_T	*channel;
@@ -5334,6 +5348,8 @@ channel_select_check(int ret_in, void *rfds_in, void *wfds_in)
 
     FOR_ALL_CHANNELS(channel)
     {
+	if (cs && !channel->ch_clientserver)
+	    continue;
 	for (part = PART_SOCK; part < PART_IN; ++part)
 	{
 	    sock_T fd = channel->ch_part[part].ch_fd;
@@ -5530,7 +5546,7 @@ set_ref_in_channel(int copyID)
 
     for (channel = first_channel; !abort && channel != NULL;
 						   channel = channel->ch_next)
-	if (channel_still_useful(channel))
+	if (channel_still_useful(channel) || channel->ch_clientserver)
 	{
 	    tv.v_type = VAR_CHANNEL;
 	    tv.vval.v_channel = channel;
@@ -5866,6 +5882,392 @@ channel_to_string_buf(typval_T *varp, char_u *buf)
 	vim_snprintf((char *)buf, NUMBUFLEN,
 				      "channel %d %s", channel->ch_id, status);
     return buf;
+}
+
+// Represents a reply from a server2client call. Each client that calls a
+// server2client call to us has its own server_reply_T. Each time a client sends
+// data using server2client, Vim creates a server_reply_T if it doesn't exist
+// and adds the string to the array. When remote_read is called, the server id
+// is used to find the specific ss_reply_T, and a single string is popped from
+// the array.
+typedef struct
+{
+    char_u *sender;
+    garray_T strings;
+} server_reply_T;
+
+static channel_T    *server_channel = NULL;
+static char_u	    *server_name = NULL;
+static bool	    server_is_unix = false;
+static garray_T	    server_replies; // Array of server_reply_T
+
+/*
+ * Start the channel server with the given name/address. Returns OK on success
+ * and FAIL on failure.
+ */
+    int
+channel_start_server(char_u *name)
+{
+    char_u	*address;
+    int		address_len;
+    int		port;
+    bool	is_unix;
+    channel_T	*channel;
+
+    if (server_channel != NULL)
+	return OK;
+
+    address = channel_parse_address(name, &address_len, &port, &is_unix, false);
+    if (address == NULL)
+	return FAIL;
+
+    vim_snprintf((char *)IObuff, IOSIZE, "%.*s", address_len, address);
+
+    if (is_unix)
+	channel = channel_listen_unix((char *)IObuff, NULL);
+    else
+	channel = channel_listen((char *)IObuff, port, NULL);
+
+    if (channel == NULL)
+	return FAIL;
+
+    channel->ch_clientserver = true;
+
+    server_is_unix = is_unix;
+    server_channel = channel;
+    server_name = vim_strsave(name);
+    if (server_name == NULL)
+    {
+	channel_stop_server();
+	return FAIL;
+    }
+
+    return OK;
+}
+
+/*
+ * Stop running the server if it is. Note that this stops the server, but does
+ * not stop Vim from becoming a client.
+ */
+    void
+channel_stop_server(void)
+{
+    if (server_channel == NULL)
+	return;
+
+    channel_close(server_channel, true);
+    channel_clear(server_channel);
+
+    if (server_is_unix)
+    {
+	char_u *actual = server_name;
+
+	if (STRNCMP(server_name, "unix:", 5) == 0)
+	    actual = server_name + 5;
+	mch_remove(actual);
+    }
+
+    vim_free(server_name);
+    server_name = NULL;
+}
+
+/*
+ * Execute any commands from clients.
+ */
+    static void
+channel_server_exec(channel_T *channel, dict_T *message)
+{
+    dictitem_T	*di;
+    char_u	*type;
+    char_u	*enc = p_enc;
+    char_u	*str = NULL;
+    int		rcode = 0;
+    char_u	*sender = NULL;
+    char_u	*to_free;
+    char_u	*to_free2;
+
+    di = dict_find(message, (char_u *)"type", -1);
+    if (di == NULL || di->di_tv.v_type != VAR_STRING)
+	return;
+    else
+	type = di->di_tv.vval.v_string;
+
+    di = dict_find(message, (char_u *)"enc", -1);
+    if (di != NULL && di->di_tv.v_type == VAR_STRING)
+	enc = di->di_tv.vval.v_string;
+
+    di = dict_find(message, (char_u *)"str", -1);
+    if (di != NULL && di->di_tv.v_type == VAR_STRING)
+	str = di->di_tv.vval.v_string;
+
+    di = dict_find(message, (char_u *)"code", -1);
+    if (di != NULL && di->di_tv.v_type == VAR_NUMBER)
+	rcode = di->di_tv.vval.v_number;
+
+    di = dict_find(message, (char_u *)"sender", -1);
+    if (di != NULL && di->di_tv.v_type == VAR_STRING)
+    {
+	sender = di->di_tv.vval.v_string;
+
+	// Save in global
+	vim_free(client_socket);
+	client_socket = vim_strsave(sender);
+    }
+
+    ch_log(NULL, "channel_server_exec(): encoding: %s, result: %s",
+	    enc, str == NULL ? (char_u *)"(null)" : str);
+
+    if (STRCMP(type, "expr") == 0)
+    {
+	// Evaluate expression and send back reply
+	typval_T    tv;
+	dict_T	    *dict;
+	char_u	    *result;
+	int	    code;
+	char_u	    *buf;
+
+	dict = dict_alloc();
+	if (dict == NULL)
+	    return;
+
+	str = serverConvert(enc, str, &to_free);
+	result = eval_client_expr_to_string(str);
+	code = result == NULL ? -1 : 0;
+
+	dict_add_string(dict, "type", (char_u *)"reply");
+	if (result != NULL)
+	    dict_add_string(dict, "str", result);
+	else
+	    // Error occured, return error message
+	    dict_add_string(dict, "str",
+		    (char_u *)_(e_invalid_expression_received));
+
+	dict_add_number(dict, "code", code);
+	dict_add_string(dict, "enc", p_enc);
+
+	tv.v_type = VAR_DICT;
+	tv.vval.v_dict = dict;
+
+	buf = json_encode(&tv, JSON_NL);
+
+	channel_send(channel, PART_SOCK, buf, STRLEN(buf),
+		"channel_server_exec");
+
+	dict_unref(dict);
+	vim_free(to_free);
+    }
+    else if (STRCMP(type, "keystrokes") == 0)
+    {
+	// Execute keystrokes
+	str = serverConvert(enc, str, &to_free);
+	server_to_input_buf(str);
+	vim_free(to_free);
+    }
+    if (STRCMP(type, "reply") == 0)
+    {
+	// Reply from a previous command.
+	vim_free(channel->ch_cs_result);
+	channel->ch_cs_result = vim_strsave(str);
+	channel->ch_cs_code = rcode;
+    }
+    if (STRCMP(type, "notify") == 0)
+    {
+	// Notification, execute autocommands and save the reply for later use
+    }
+}
+
+/*
+ * Poll until there is something to read on "channel". Also handle other server
+ * channels in the meantime if any. Return OK on successa and FAIL on failure or
+ * timeout.
+ */
+    static int
+channel_server_wait(channel_T *channel, int timeout)
+{
+    while (true)
+    {
+#ifdef HAVE_SELECT
+	channel_T	*ch;
+	fd_set		rfds;
+	fd_set		wfds;
+	struct timeval  tv;
+	struct timeval  *tvp;
+	int		maxfd;
+	int		ret;
+
+	FD_ZERO(&rfds);
+	FD_ZERO(&wfds);
+
+	maxfd = channel->CH_SOCK_FD;
+	FD_SET(channel->CH_SOCK_FD, &rfds);
+	if (server_channel != NULL)
+	{
+	    FD_SET(server_channel->CH_SOCK_FD, &rfds);
+	    if (server_channel->CH_SOCK_FD > maxfd)
+		maxfd = server_channel->CH_SOCK_FD;
+	}
+
+	maxfd = channel_select_setup(maxfd, &rfds, &wfds, &tv, &tvp, true);
+
+	ret = select(maxfd + 1, &rfds, &wfds, NULL, tvp);
+# ifdef EINTR
+	SOCK_ERRNO;
+	if (ret == -1 && errno == EINTR)
+	    continue;
+# endif
+	if (ret > 0)
+	{
+	    FOR_ALL_CHANNELS(ch)
+	    {
+		if (!ch->ch_clientserver)
+		    continue;
+		channel_read(ch, PART_SOCK, "channel_server_wait");
+		if (channel_has_readahead(ch, PART_SOCK))
+		    may_invoke_callback(ch, PART_SOCK);
+	    }
+
+	    if (FD_ISSET(channel->CH_SOCK_FD, &rfds))
+		return OK;
+	    continue;
+	}
+	break;
+#endif
+    }
+    return FAIL;
+}
+
+/*
+ * Send command to address "name". Returns 0 for OK, -1 on error.
+ */
+    int
+channel_server_send(char_u *name,
+                    char_u *str,
+                    char_u **result,
+                    char_u **receiver,
+                    int is_expr,
+                    int timeout,
+                    int silent)
+{
+    char_u	*address;
+    int		address_len;
+    int		port;
+    bool	is_unix;
+    channel_T	*channel;
+    dict_T	*dict;
+    typval_T	tv;
+    char_u	*buf;
+
+    // Execute locally if target is ourselves
+    if (serverName != NULL && STRICMP(name, serverName) == 0)
+	return sendToLocalVim(str, is_expr, result);
+
+    address = channel_parse_address(name, &address_len, &port, &is_unix, false);
+    if (address == NULL)
+	return FAIL;
+
+    vim_snprintf((char *)IObuff, IOSIZE, "%.*s", address_len, address);
+
+    if (is_unix)
+	channel = channel_open_unix((char *)IObuff, NULL);
+    else
+	channel = channel_open((char *)IObuff, port, 1000, NULL);
+
+    if (channel == NULL)
+	return -1;
+
+    channel->ch_part[PART_SOCK].ch_mode = CH_MODE_JSON;
+    channel->ch_clientserver = true;
+    channel->ch_nonblock = true;
+
+    dict = dict_alloc();
+    if (dict == NULL)
+	goto fail;
+
+    dict_add_string(dict, "type", (char_u *)(is_expr ? "expr" : "keystrokes"));
+    dict_add_string(dict, "enc", p_enc);
+    dict_add_string(dict, "str", str);
+
+    // Tell server who we are so it can save our socket path internally for
+    // later use with server2client. Only do this if we are actually a server.
+    if (server_name != NULL)
+	dict_add_string(dict, "sender", server_name);
+
+    tv.v_type = VAR_DICT;
+    tv.vval.v_dict = dict;
+
+    buf = json_encode(&tv, JSON_NL);
+    if (buf == NULL
+	    || channel_send(channel, PART_SOCK, buf, STRLEN(buf),
+		"channel_server_send") == FAIL)
+    {
+	dict_unref(dict);
+	vim_free(buf);
+	goto fail;
+    }
+    vim_free(buf);
+    dict_unref(dict);
+
+    if (!is_expr)
+    {
+	if (receiver != NULL)
+	    *receiver = vim_strsave(name);
+
+	// Exit, we aren't waiting for a response
+	return 0;
+    }
+
+    // To handle recursive calls, we must handle all server channels as well.
+    while (channel_server_wait(channel, timeout) == OK)
+	if (channel->ch_cs_result != NULL)
+	    break;
+
+    if (channel->ch_cs_result == NULL)
+	return -1;
+
+    if (channel->ch_cs_result != NULL)
+	*result = channel->ch_cs_result;
+    else
+	vim_free(channel->ch_cs_result);
+
+    if (receiver != NULL)
+	*receiver = vim_strsave(name);
+
+    return channel->ch_cs_code == 0 ? 0 : -1;
+fail:
+    channel_close(channel, false);
+    channel_clear(channel);
+    return -1;
+}
+
+/*
+ * Wait for replies from "client" and place result in "str". Returns OK on
+ * success and FAIL on failure. Timeout is in milliseconds
+ */
+    int
+channel_server_read_reply(char_u *client, char_u **str, int timeout)
+{
+    return OK;
+}
+
+/*
+ * Check for any replies for "sender". Returns 1 if there is and places the
+ * reply in "str" without consuming it. Returns 0 if otherwise and -1 on
+ * error.
+ */
+    int
+channel_server_peek_reply(char_u *sender, char_u **str)
+{
+    return 0;
+}
+
+/*
+ * Send a string to "client" as a reply (notification). Returns OK on success
+ * and FAIL on failure.
+ */
+    int
+channel_server_send_reply(char_u *client, char_u *str)
+{
+    return OK;
 }
 
 #endif // FEAT_JOB_CHANNEL

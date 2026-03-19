@@ -215,11 +215,11 @@ exec_on_server(mparm_T *parmp)
     if ((parmp->serverArg || parmp->serverName_arg != NULL) &&
 	    clientserver_method == CLIENTSERVER_METHOD_SOCKET)
     {
-	parmp->servername = serverMakeName(parmp->serverName_arg,
-		parmp->argv[0]);
-	if (socket_server_init(parmp->servername) == OK)
-	    TIME_MSG("initialize socket server");
-	made_name = TRUE;
+	/* parmp->servername = serverMakeName(parmp->serverName_arg, */
+		/* parmp->argv[0]); */
+	/* if (socket_server_init(parmp->servername) == OK) */
+	    /* TIME_MSG("initialize socket server"); */
+	/* made_name = TRUE; */
     }
 # endif
 
@@ -561,12 +561,15 @@ cmdsrv_main(
 #  ifdef FEAT_SOCKETSERVER
 	    if (clientserver_method == CLIENTSERVER_METHOD_SOCKET)
 	    {
-		if (!socket_server_valid())
-		    mch_errmsg(_("Socket server not online:"
-				"Send expression failed"));
-		else if (socket_server_send(sname, (char_u *)argv[i + 1],
+		if (channel_server_send(sname, (char_u *)argv[i + 1],
 			    &res, NULL, 1, 0, FALSE) < 0)
 		    goto expr_fail;
+		/* if (!socket_server_valid()) */
+		    /* mch_errmsg(_("Socket server not online:" */
+				/* "Send expression failed")); */
+		/* else if (socket_server_send(sname, (char_u *)argv[i + 1], */
+			    /* &res, NULL, 1, 0, FALSE) < 0) */
+		    /* goto expr_fail; */
 	    }
 #  endif
 #  ifdef FEAT_X11
@@ -814,11 +817,11 @@ serverMakeName(char_u *arg, char *cmd)
 	// name if it is a path, else uppercase it if its just a generic name.
 	if (clientserver_method == CLIENTSERVER_METHOD_SOCKET)
 	{
-	    if (arg[0] == '/' || STRNCMP(arg, "./", 2) == 0 ||
-		    STRNCMP(arg, "../", 3) == 0)
+	    /* if (arg[0] == '/' || STRNCMP(arg, "./", 2) == 0 || */
+		    /* STRNCMP(arg, "../", 3) == 0) */
 		p = vim_strsave(arg);
-	    else
-		p = vim_strsave_up(arg);
+	    /* else */
+		/* p = vim_strsave_up(arg); */
 	}
 	else
 	    p = vim_strsave_up(arg);

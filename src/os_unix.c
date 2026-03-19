@@ -6884,7 +6884,7 @@ select_eintr:
 	}
 #  endif
 #  ifdef FEAT_JOB_CHANNEL
-	maxfd = channel_select_setup(maxfd, &rfds, &wfds, &tv, &tvp);
+	maxfd = channel_select_setup(maxfd, &rfds, &wfds, &tv, &tvp, false);
 #  endif
 	if (interrupted != NULL)
 	    *interrupted = FALSE;
@@ -7000,7 +7000,7 @@ select_eintr:
 #  ifdef FEAT_JOB_CHANNEL
 	// also call when ret == 0, we may be polling a keep-open channel
 	if (ret >= 0)
-	    (void)channel_select_check(ret, &rfds, &wfds);
+	    (void)channel_select_check(ret, &rfds, &wfds, false);
 #  endif
 
 # endif // HAVE_SELECT

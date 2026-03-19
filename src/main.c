@@ -207,7 +207,9 @@ main
      * This may exit Vim if the command was sent to the server.
      */
     exec_on_server(&params);
+
 #  endif
+    channel_start_server((char_u *)"unix:/tmp/vim.sock");
 
     /*
      * Figure out the way to work from the command name argv[0].
@@ -1818,6 +1820,7 @@ getout(int exitval)
 	windgoto((int)Rows - 1, 0);
 
 #ifdef FEAT_JOB_CHANNEL
+    channel_stop_server();
     job_stop_on_exit();
 #endif
 #ifdef FEAT_LUA

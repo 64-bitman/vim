@@ -716,6 +716,8 @@ typedef struct
     char_u	*xp_arg;	// user-defined expansion arg
     int		input_fn;	// when TRUE Invoked for input() function
 #endif
+    int		cmdbuff_replaced; // when TRUE cmdline was replaced externally
+				  // (e.g. by setcmdline())
 } cmdline_info_T;
 
 /*
@@ -2717,6 +2719,9 @@ struct channel_S {
     void	(*ch_nb_close_cb)(void);
 				// callback for Netbeans when channel is
 				// closed
+    bool	ch_clientserver; // Used by clientserver functionality
+    char_u	*ch_cs_result;	// Result string from sent command
+    int		ch_cs_code;	// Return code from sent command
 
 #ifdef MSWIN
     int		ch_named_pipe;	// using named pipe instead of pty
