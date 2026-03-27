@@ -817,6 +817,10 @@
 # define WANT_WAYLAND
 #endif
 
+#if defined(FEAT_TREESITTER) && !defined(FEAT_EVAL)
+# undef FEAT_TREESITTER
+#endif
+
 /*
  * XSMP - X11 Session Management Protocol
  * It may be preferred to disable this if the GUI supports it (e.g.,
@@ -1203,7 +1207,8 @@
 	|| defined(DYNAMIC_GETTEXT) \
 	|| defined(DYNAMIC_MZSCHEME) \
 	|| defined(DYNAMIC_LUA) \
-	|| defined(FEAT_TERMINAL)
+	|| defined(FEAT_TERMINAL) \
+	|| defined(FEAT_TREESITTER)
 # define USING_LOAD_LIBRARY
 #endif
 

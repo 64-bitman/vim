@@ -3812,3 +3812,9 @@ EXTERN char e_gethostbyname_in_channel_listen[]
 EXTERN char e_cannot_create_pipes[]
 	INIT(= N_("E1575: Cannot create pipes"));
 #endif
+#ifdef FEAT_TREESITTER
+EXTERN char e_treesitter_get_lang_error[]
+	INIT(= N_("E1576: Failed loading treesitter parser %s"));
+EXTERN char e_treesitter_lang_not_found[]
+	INIT(= N_("E1577: Library for language %s cannot be found"));
+#endif
