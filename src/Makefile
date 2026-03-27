@@ -1384,6 +1384,7 @@ ALL_LIBS = \
 	   $(X_PRE_LIBS) \
 	   $(X_LIBS) \
 	   $(WAYLAND_LIBS) \
+	   $(TREESITTER_LIBS) \
 	   $(X_EXTRA_LIBS) \
 	   $(MZSCHEME_LIBS) \
 	   $(LIBS) \
@@ -1600,7 +1601,8 @@ SRC =	$(BASIC_SRC) \
 	$(PYTHON_SRC) $(PYTHON3_SRC) \
 	$(TCL_SRC) \
 	$(RUBY_SRC) \
-	$(WAYLAND_SRC)
+	$(WAYLAND_SRC) \
+	$(TREESITTER_SRC)
 
 EXTRA_SRC = if_lua.c if_mzsch.c auto/if_perl.c \
 	    if_python.c if_python3.c if_tcl.c if_ruby.c \
@@ -1637,7 +1639,7 @@ RUN_UNITTESTS = $(WAYLAND_SRC) run_json_test run_kword_test run_memfile_test run
 
 # All sources, also the ones that are not configured
 ALL_LOCAL_SRC = $(BASIC_SRC) $(ALL_GUI_SRC) $(UNITTEST_SRC) $(EXTRA_SRC) \
-		$(WAYLAND_SRC)
+		$(WAYLAND_SRC) $(TREESITTER_SRC)
 ALL_SRC = $(ALL_LOCAL_SRC) $(TERM_SRC) $(XDIFF_SRC)
 
 # Which files to check with lint.  Select one of these three lines.  ALL_SRC
@@ -1781,7 +1783,8 @@ OBJ_COMMON = \
 	$(NETBEANS_OBJ) \
 	$(CHANNEL_OBJ) \
 	$(XDIFF_OBJS_USED) \
-	$(WAYLAND_OBJ)
+	$(WAYLAND_OBJ) \
+	$(TREESITTER_OBJ)
 
 # The files included by tests are not in OBJ_COMMON.
 OBJ_MAIN = \
@@ -3611,6 +3614,9 @@ objects/textprop.o: textprop.c
 objects/time.o: time.c
 	$(CCC) -o $@ time.c
 
+objects/treesitter.o: treesitter.c
+	$(CCC) $(TREESITTER_CFLAGS) $(TREESITTER_CPPFLAGS) -o $@ treesitter.c
+
 objects/tuple.o: tuple.c
 	$(CCC) -o $@ tuple.c
 
@@ -4322,6 +4328,11 @@ objects/time.o: auto/osdef.h time.c vim.h protodef.h auto/config.h feature.h os_
  structs.h regexp.h gui.h libvterm/include/vterm.h \
  libvterm/include/vterm_keycodes.h alloc.h ex_cmds.h spell.h proto.h \
  globals.h errors.h
+objects/treesitter.o: treesitter.c vim.h protodef.h auto/config.h feature.h \
+ os_unix.h auto/osdef.h ascii.h keymap.h termdefs.h macros.h option.h \
+ beval.h structs.h regexp.h gui.h libvterm/include/vterm.h \
+ libvterm/include/vterm_keycodes.h xdiff/xdiff.h xdiff/../vim.h alloc.h \
+ ex_cmds.h spell.h proto.h globals.h errors.h
 objects/tuple.o: auto/osdef.h tuple.c vim.h protodef.h auto/config.h feature.h os_unix.h \
  ascii.h keymap.h termdefs.h macros.h option.h beval.h \
  structs.h regexp.h gui.h libvterm/include/vterm.h \
@@ -4783,6 +4794,7 @@ proto/textformat.pro: textformat.c
 proto/textobject.pro: textobject.c
 proto/textprop.pro: textprop.c
 proto/time.pro: time.c
+proto/treesitter.pro: treesitter.c
 proto/tuple.pro: tuple.c
 proto/typval.pro: typval.c
 proto/ui.pro: ui.c
