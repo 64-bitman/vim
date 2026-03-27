@@ -3814,7 +3814,7 @@ EXTERN char e_cannot_create_pipes[]
 #endif
 #ifdef FEAT_TREESITTER
 EXTERN char e_treesitter_get_lang_error[]
-	INIT(= N_("E1576: Failed loading treesitter parser %s"));
+	INIT(= N_("E1576: Failed loading treesitter parser '%s'"));
 EXTERN char e_treesitter_lang_not_found[]
-	INIT(= N_("E1577: Library for language %s cannot be found"));
+	INIT(= N_("E1577: Library for language '%s' cannot be found"));
 #endif
