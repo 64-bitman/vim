@@ -152,6 +152,57 @@ typedef struct {
 } termcellcolor_T;
 #endif
 
+#ifdef FEAT_TREESITTER
+
+/*
+ * Represents a TSTree and the region that it manages.
+ */
+typedef struct tree_S tree_T;
+struct tree_S
+{
+    TSTree	*tr_tree;	// Tree object
+    garray_T	tr_region;  	// Array of TSRange structs
+    bool	tr_valid;   	// If this tree is valid (region matches AST)
+    tree_T	*tr_next;   	// Next in list within a language tree
+};
+
+/*
+ * A language tree for Treesitter. A language tree may have child trees, each
+ * representing a single language injected in the current language tree.
+ *
+ * To handle the same language appearing in multiple separate regions in the
+ * source file, each language tree has a total list of ranges that it manages in
+ * the source.
+ *
+ * Each separate instance of a language (which may be of multiple ranges, a
+ * region) has its own TSTree object parsed from it.
+ */
+typedef struct languagetree_S languagetree_T;
+struct languagetree_S
+{
+    buf_T	    *lt_buf;	    // Source buffer that is used
+    char_u	    *lt_name;	    // Name of language used
+    TSParser	    *lt_parser;	    // Parser for this language tree
+
+    tree_T	    *lt_trees;		    // List of trees for each region
+					    // within this language tree.
+    int             lt_num_regions;	    // Length of "lt_trees"
+    int             lt_num_valid_regions;   // Number of valid trees
+    bool	    lt_is_entirely_valid;   // If all trees are valid
+
+    languagetree_T  *lt_children;   // List of child trees
+    languagetree_T  *lt_parent;	    // Parent language tree if any
+
+    languagetree_T  *lt_next;	    // Next in list for current level in
+				    // hierarchy. For root tree this is NULL.
+    languagetree_T  *lt_prev;	    // Previous tree in list
+
+    languagetree_T  *lt_nextparse;  // Next in parse queue (trees_to_parse)
+    languagetree_T  *lt_prevparse;  // Previous in parse queue
+};
+
+#endif
+
 /*
  * marks: positions in a file
  * (a normal mark is a lnum/col pair, the same as a file position)
@@ -3649,6 +3700,10 @@ struct file_buffer
 #endif
 #ifdef FEAT_DIFF
     int		b_diff_failed;	// internal diff failed for this buffer
+#endif
+#ifdef FEAT_TREESITTER
+    languagetree_T  *b_languagetree;	// Language tree for this buffer (NULL
+					// if none).
 #endif
 }; // file_buffer
 

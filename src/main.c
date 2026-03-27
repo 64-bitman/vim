@@ -494,6 +494,10 @@ x_restore_state(void)
     int
 vim_main2(void)
 {
+#ifdef FEAT_TREESITTER
+    treesitter_init();
+#endif
+
 #ifndef NO_VIM_MAIN
 # ifdef FEAT_EVAL
     /*
