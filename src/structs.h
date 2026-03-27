@@ -157,13 +157,14 @@ typedef struct {
 /*
  * Represents a TSTree and the region that it manages.
  */
-typedef struct tree_S tree_T;
-struct tree_S
+typedef struct lt_region_S lt_region_T;
+struct lt_region_S
 {
-    TSTree	*tr_tree;	// Tree object
-    garray_T	tr_region;  	// Array of TSRange structs
-    bool	tr_valid;   	// If this tree is valid (region matches AST)
-    tree_T	*tr_next;   	// Next in list within a language tree
+    TSTree	*lr_tree;	// Tree object
+    TSRange	*lr_region;  	// Array of TSRange structs
+    int		lr_len;		// Length of "lr_region"
+    bool	lr_valid;   	// If this tree is valid (region matches AST)
+    lt_region_T	*lr_next;   	// Next in list within a language tree
 };
 
 /*
@@ -184,11 +185,18 @@ struct languagetree_S
     char_u	    *lt_name;	    // Name of language used
     TSParser	    *lt_parser;	    // Parser for this language tree
 
-    tree_T	    *lt_trees;		    // List of trees for each region
-					    // within this language tree.
-    int             lt_num_regions;	    // Length of "lt_trees"
-    int             lt_num_valid_regions;   // Number of valid trees
-    bool	    lt_is_entirely_valid;   // If all trees are valid
+    lt_region_T	    *lt_regions;	    // List of regions. if NULL, then
+					    // region is the whole document.
+    TSTree	    *lt_tree;		    // Only set if "lt_regions" is NULL.
+    int             lt_num_regions;	    // Length of "lt_regions".
+    int             lt_num_valid_regions;   // Number of valid trees. If
+					    // "lt_regions" is NULL, then this
+					    // is zero always.
+    bool	    lt_valid;		    // If all regions are valid.
+
+    TSQuery	    *lt_injection_query;    // Query for detecting injections,
+					    // may be nULL if none.
+    TSQueryCursor   *lt_injection_cursor;   // Shared query cursor
 
     languagetree_T  *lt_children;   // List of child trees
     languagetree_T  *lt_parent;	    // Parent language tree if any
@@ -196,10 +204,8 @@ struct languagetree_S
     languagetree_T  *lt_next;	    // Next in list for current level in
 				    // hierarchy. For root tree this is NULL.
     languagetree_T  *lt_prev;	    // Previous tree in list
-
-    languagetree_T  *lt_nextparse;  // Next in parse queue (trees_to_parse)
-    languagetree_T  *lt_prevparse;  // Previous in parse queue
 };
+// TODO: add callback system and detect changes
 
 #endif
 

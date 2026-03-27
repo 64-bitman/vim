@@ -1291,6 +1291,7 @@ static argcheck_T arg2_str_or_nr_or_list_dict[] = {arg_str_or_nr_or_list, arg_di
 static argcheck_T arg2_string[] = {arg_string, arg_string};
 static argcheck_T arg2_string_any[] = {arg_string, arg_any};
 static argcheck_T arg2_string_bool[] = {arg_string, arg_bool};
+static argcheck_T arg2_string_buffer[] = {arg_string, arg_buffer};
 static argcheck_T arg2_string_chan_or_job[] = {arg_string, arg_chan_or_job};
 static argcheck_T arg2_string_dict[] = {arg_string, arg_dict_any};
 static argcheck_T arg2_string_list_number[] = {arg_string, arg_list_number};
@@ -1933,6 +1934,11 @@ typedef struct
 # define TERM_FUNC(name) name
 #else
 # define TERM_FUNC(name) NULL
+#endif
+#ifdef FEAT_TREESITTER
+# define TS_FUNC(name) name
+#else
+# define TS_FUNC(name) NULL
 #endif
 
 static const funcentry_T global_functions[] =
@@ -3131,6 +3137,8 @@ static const funcentry_T global_functions[] =
 			ret_string,	    f_toupper},
     {"tr",		3, 3, FEARG_1,	    arg3_string,
 			ret_string,	    f_tr},
+    {"treesitter_start", 1, 2, FEARG_1,	    arg2_string_buffer,
+			ret_void,	    TS_FUNC(f_treesitter_start)},
     {"trim",		1, 3, FEARG_1,	    arg3_string_string_number,
 			ret_string,	    f_trim},
     {"trunc",		1, 1, FEARG_1,	    arg1_float_or_nr,
