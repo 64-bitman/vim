@@ -980,8 +980,8 @@ buf_freeall(buf_T *buf, int flags)
     clear_buf_prop_types(buf);
 #endif
 #ifdef FEAT_TREESITTER
-    if (buf->b_languagetree != NULL)
-	languagetree_free(buf->b_languagetree);
+    /* if (buf->b_languagetree != NULL) */
+	/* languagetree_free(buf->b_languagetree); */
 #endif
     buf->b_flags &= ~BF_READERR;    // a read error is no longer relevant
     return TRUE;

@@ -215,6 +215,9 @@ static void	ex_popup(exarg_T *eap);
 #ifndef FEAT_KEYMAP
 # define ex_loadkeymap		ex_ni
 #endif
+#ifndef FEAT_TREESITTER
+# define ex_treesitter		ex_ni
+#endif
 static void	ex_swapname(exarg_T *eap);
 static void	ex_syncbind(exarg_T *eap);
 static void	ex_read(exarg_T *eap);

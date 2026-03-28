@@ -1,5 +1,6 @@
 /* treesitter.c */
 void treesitter_init(void);
-void languagetree_free(languagetree_T *lt);
-void f_treesitter_start(typval_T *args, typval_T *rettv);
+void treesitter_uninit(void);
+void ex_treesitter(exarg_T *eap);
+void set_context_in_treesitter_cmd(expand_T *xp, char_u *arg);
 /* vim: set ft=c : */

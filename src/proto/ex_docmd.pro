@@ -79,4 +79,5 @@ void set_no_hlsearch(int flag);
 int is_loclist_cmd(int cmdidx);
 int get_pressedreturn(void);
 void set_pressedreturn(int val);
+void ex_treesitter(exarg_T *eap);
 /* vim: set ft=c : */
