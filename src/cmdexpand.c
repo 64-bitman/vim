@@ -2665,6 +2665,10 @@ set_context_by_cmdname(
 	    xp->xp_pattern = arg;
 	    break;
 
+	case CMD_treesitter:
+	    set_context_in_treesitter_cmd(xp, arg);
+	    break;
+
 	case CMD_messages:
 	    xp->xp_context = EXPAND_MESSAGES;
 	    xp->xp_pattern = arg;

@@ -3137,8 +3137,6 @@ static const funcentry_T global_functions[] =
 			ret_string,	    f_toupper},
     {"tr",		3, 3, FEARG_1,	    arg3_string,
 			ret_string,	    f_tr},
-    {"treesitter_start", 1, 2, FEARG_1,	    arg2_string_buffer,
-			ret_void,	    TS_FUNC(f_treesitter_start)},
     {"trim",		1, 3, FEARG_1,	    arg3_string_string_number,
 			ret_string,	    f_trim},
     {"trunc",		1, 1, FEARG_1,	    arg1_float_or_nr,

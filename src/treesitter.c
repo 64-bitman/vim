@@ -36,13 +36,21 @@ typedef struct treesitter_lang_S treesitter_lang_T;
 struct treesitter_lang_S
 {
     HANDLE		tl_handle;  // Library handle
-    TSLanguage		*tl_obj;    // Opaque object
+    TSLanguage		*tl_obj;    // Opaque object, may be NULL if not loaded
+
+    char_u		*tl_path;   // Path to language parser
+    char_u		*tl_symbol; // Symbol name suffix
+
     treesitter_lang_T	*tl_next;   // Next in list
+    treesitter_lang_T	*tl_prev;   // Previous in list
+
     char_u		tl_name[1]; // Actually longer (language name)
 };
 
 static treesitter_lang_T *treesitter_langs = NULL;
 #define FOR_ALL_LANGS(l) for (l = treesitter_langs; l != NULL; l = l->tl_next)
+
+static void treesitter_free_lang(treesitter_lang_T *lang);
 
 /*
  * Vim allocator functions for treesitter
@@ -68,17 +76,30 @@ treesitter_init(void)
     ts_set_allocator(alloc, treesitter_calloc, treesitter_realloc, vim_free);
 }
 
+    void
+treesitter_uninit(void)
+{
+    treesitter_lang_T *lang = treesitter_langs;
+
+    while (lang != NULL)
+    {
+	treesitter_lang_T *next = lang->tl_next;
+
+	treesitter_free_lang(lang);
+	lang = next;
+    }
+}
+
 /*
  * Load the Treesitter library at the given path, and return the language object
  * + store the handle in "handle". Returns NULL on failure.
  */
     static TSLanguage *
-treesitter_load_language(char *path, char *symbol, HANDLE *handle)
+treesitter_load_language(char_u *path, char_u *symbol, HANDLE *handle)
 {
-    HANDLE	h = load_dll(path);
+    HANDLE	h = load_dll((char *)path);
     TSLanguage	*lang;
     TSLanguage	*(*func)(void);
-    static char	buf[255];
 
     if (h == NULL)
     {
@@ -86,11 +107,11 @@ treesitter_load_language(char *path, char *symbol, HANDLE *handle)
 	return NULL;
     }
 
-    vim_snprintf(buf, sizeof(buf), "tree_sitter_%s", symbol);
-    func = symbol_from_dll(h, buf);
+    vim_snprintf((char *)IObuff, IOSIZE, "tree_sitter_%s", symbol);
+    func = symbol_from_dll(h, (char *)IObuff);
     if (func == NULL)
     {
-	semsg(_(e_could_not_load_library_function_str), buf);
+	semsg(_(e_could_not_load_library_function_str), IObuff);
 	close_dll(h);
 	return NULL;
     }
@@ -108,411 +129,229 @@ treesitter_load_language(char *path, char *symbol, HANDLE *handle)
 }
 
 /*
- * Return a string containing the path to the first found Treesitter library for
- * "lang". Note that string is only valid until the next function call. Return
- * NULL if none found.
+ * Free struct for language "name" and close the library/dll.
  */
-    static char_u *
-treesitter_find_library(char_u *lang)
+    static void
+treesitter_free_lang(treesitter_lang_T *lang)
 {
-    static char	    *paths[] = {
-	"/usr/lib/tree_sitter"
-    };
-    static char_u   buf[MAXPATHL];
-    bool	    found = false;
+    if (lang->tl_obj != NULL)
+	ts_language_delete(lang->tl_obj);
+    if (lang->tl_handle != NULL)
+	close_dll(lang->tl_handle);
 
-    for (int i = 0; i < ARRAY_LENGTH(paths); i++)
+    vim_free(lang->tl_path);
+    vim_free(lang->tl_symbol);
+
+    if (lang == treesitter_langs)
+	treesitter_langs = lang->tl_next;
+    if (lang->tl_prev != NULL)
+	lang->tl_prev->tl_next = lang->tl_next;
+    if (lang->tl_next != NULL)
+	lang->tl_next->tl_prev = lang->tl_prev;
+
+    vim_free(lang);
+}
+
+/*
+ * Add the language to the global list. This does not load the langauge parser,
+ * that is done when neeeded. Returns OK on success and FAIL on failure.
+ */
+    static int
+treesitter_add_language(char_u *name, char_u *path, char_u *symbol_name)
+{
+    treesitter_lang_T *lang;
+
+    lang = alloc_clear(sizeof(treesitter_lang_T) + STRLEN(name));
+    if (lang == NULL)
     {
-	char_u *path = (char_u *)paths[i];
-
-	vim_snprintf((char *)buf, MAXPATHL, "%s/%s.so", path, lang);
-	
-	if (file_is_readable(buf))
-	{
-	    found = true;
-	    break;
-	}
+	emsg(_(e_out_of_memory));
+	return FAIL;
     }
-    if (found)
-	return buf;
-    semsg(_(e_treesitter_lang_not_found), lang);
+
+    sprintf((char *)lang->tl_name, "%s", name);
+    lang->tl_path = vim_strsave(path);
+    lang->tl_symbol = vim_strsave(symbol_name == NULL ? name : symbol_name);
+
+    if (lang->tl_path == NULL || lang->tl_symbol == NULL)
+    {
+	emsg(_(e_out_of_memory));
+	treesitter_free_lang(lang);
+	return FAIL;
+    }
+
+    lang->tl_next = treesitter_langs;
+    treesitter_langs = lang;
+    return OK;
+}
+
+/*
+ * Return struct for language "name", otherwise NULL.
+ */
+    static treesitter_lang_T *
+treesitter_find_lang(char_u *name)
+{
+    treesitter_lang_T *lang;
+
+    FOR_ALL_LANGS(lang)
+	if (STRCMP(lang->tl_name, name) == 0)
+	    return lang;
     return NULL;
 }
 
 /*
- * If the Treesitter language is not load it, then load it. If it is already
- * loaded, then do nothing. If "symbol_name" is NULL, then "name" is used as the
- * symbol name to lookup. If "path" is NULL, then treesitter_find_library() is
- * used. Returnss the TSLanguage object on success and NULL on failure.
+ * Find the struct for the language named "name", and return its TSLanguage. If
+ * it is not loaded, then load it. Returns NULL on failure.
  */
     static TSLanguage *
-treesitter_check_language(char_u *name, char_u *path, char_u *symbol_name)
+treesitter_get_language(char_u *name)
 {
-    TSLanguage		*obj;
-    treesitter_lang_T	*lang;
-    HANDLE		handle;
+    treesitter_lang_T *lang = treesitter_find_lang(name);
 
-    if (path == NULL)
-	path = treesitter_find_library(name);
-    if (path == NULL)
+    if (lang != NULL)
     {
-	semsg(_(e_treesitter_lang_not_found), name);
-	return FAIL;
+	if (lang->tl_obj == NULL)
+	    lang->tl_obj = treesitter_load_language(
+		    lang->tl_path, lang->tl_symbol, &lang->tl_handle);
+	return lang->tl_obj;
     }
 
-    // Check if language is loaded
-    FOR_ALL_LANGS(lang)
-	if (STRCMP(lang->tl_name, name) == 0)
-	    return lang->tl_obj;
-
-    lang = alloc(sizeof(treesitter_lang_T) + STRLEN(name));
-    if (lang == NULL)
-	return FAIL;
-
-    obj = treesitter_load_language((char *)path,
-	    (char *)(symbol_name == NULL ? name : symbol_name), &handle);
-
-    if (obj == NULL)
-    {
-	vim_free(lang);
-	return FAIL;
-    }
-
-    lang->tl_handle = handle;
-    lang->tl_obj = obj;
-    sprintf((char *)lang->tl_name, "%s", name);
-
-    lang->tl_next = treesitter_langs;
-    treesitter_langs = lang;
-
-    return obj;
+    semsg(_(e_treesitter_lang_not_found), name);
+    return NULL;
 }
 
 /*
- * Allocate a new empty language tree for the buffer with the language being
- * "lang". By default the language tree will span the entire buffer. Returns OK
- * on success and FAIL on failure.
+ * Output ABI version "abi". If -1, then use "unknown"
  */
-    static int
-languagetree_new(buf_T *buf, char_u *lang)
+    static void
+treesitter_list_abi(int abi)
 {
-    TSLanguage	    *langobj;
-    languagetree_T  *lt;
+    static char buf[10];
 
-    if (buf->b_languagetree != NULL) // TODO: allow replace?
-	return FAIL;
+    msg_puts("ABI version: ");
+    if (abi == -1)
+	msg_puts("unknown");
+    else
+    {
+	vim_snprintf(buf, 10, "%d", abi);
+	msg_puts(buf);
+    }
+}
 
-    langobj = treesitter_check_language(lang, NULL, NULL);
+    static void
+treesitter_list_lang(treesitter_lang_T *lang)
+{
+    msg_puts("Name: ");
+    msg_outtrans(lang->tl_name);
+    msg_puts("\n");
 
-    if (langobj == NULL)
-	return FAIL;
+    msg_puts("Loaded: ");
+    msg_puts(lang->tl_obj == NULL ? "false" : "true");
+    msg_puts("\n");
 
-    lt = ALLOC_CLEAR_ONE(languagetree_T);
+    msg_puts("Parser path: ");
+    msg_outtrans(lang->tl_path);
+    msg_puts("\n");
 
-    if (lt == NULL)
-	return FAIL;
+    msg_puts("Symbol name: ");
+    msg_outtrans(lang->tl_symbol);
+    msg_puts("\n");
 
-    lt->lt_name = vim_strsave(lang);
-    if (lt->lt_name == NULL)
-	goto fail;
-
-    lt->lt_parser = ts_parser_new();
-    if (lt->lt_parser == NULL)
-	goto fail;
-
-    ts_parser_set_language(lt->lt_parser, langobj);
-    lt->lt_buf = buf;
-    buf->b_languagetree = lt;
-
-    return OK;
-fail:
-    languagetree_free(lt);
-    return FAIL;
+    treesitter_list_abi(lang->tl_obj == NULL ? -1
+	    : ts_language_abi_version(lang->tl_obj));
 }
 
 /*
- * Free language tree and all child language trees as well.
+ * Implementation of the ":treesitter" Ex command.
  */
     void
-languagetree_free(languagetree_T *lt)
+ex_treesitter(exarg_T *eap)
 {
-    vim_free(lt->lt_name);
+    char_u		*line = eap->arg;
+    treesitter_lang_T	*lang;
+    char_u		*name_end;
+    char_u		*linep;
 
-    if (lt->lt_parser != NULL)
-	ts_parser_delete(lt->lt_parser);
-
-    for (lt_region_T *lr = lt->lt_regions; lr != NULL; lr = lr->lr_next)
+    // If no argument then list information about treesitter and loaded
+    // languages.
+    if (ends_excmd2(line - 1, line))
     {
-	vim_free(lr->lr_region);
-	ts_tree_delete(lr->lr_tree);
-    }
-    if (lt->lt_tree != NULL)
-	ts_tree_delete(lt->lt_tree);
+	msg_putchar('\n');
+	msg_puts("Latest ");
+	treesitter_list_abi(TREE_SITTER_LANGUAGE_VERSION);
+	msg_putchar('\n');
 
-    // Free all child trees
-    for (languagetree_T *child = lt->lt_children; child != NULL;)
-    {
-	languagetree_T *next = child->lt_next;
+	msg_puts("Minimum ");
+	treesitter_list_abi(TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION);
+	msg_puts("\n\n");
 
-	languagetree_free(child);
-	child = next;
-    }
+	msg_puts("Treesitter languages:");
+	msg_putchar('\n');
 
-    // Unlink from both lists
-    if (lt->lt_parent != NULL && lt->lt_parent->lt_children == lt)
-	lt->lt_parent->lt_children = lt->lt_next;
-    if (lt->lt_prev != NULL)
-	lt->lt_prev->lt_next = lt->lt_next;
-    if (lt->lt_next != NULL)
-	lt->lt_next->lt_prev = lt->lt_prev;
-
-    vim_free(lt);
-}
-
-/*
- * Add a region in the source to the languagetree, taking ownership of
- * "region". Returns OK on success and FAIL on failure
- */
-    static int
-languagetree_add_region(languagetree_T *lt, TSRange *region, int len)
-{
-    lt_region_T *lr = ALLOC_CLEAR_ONE(lt_region_T);
-
-    if (lr == NULL)
-	return FAIL;
-
-    lr->lr_region = region;
-
-    lr->lr_next = lt->lt_regions;
-    lt->lt_regions = lr;
-
-    return OK;
-}
-
-/*
- * Parse callback for ts_parser_parse(), for a buffer.
- */
-    static const char *
-parser_buf_read_callback(
-	void *payload,
-	uint32_t byte_index UNUSED,
-	TSPoint position,
-	uint32_t *bytes_read)
-{
-#define PARSE_BUFSIZE 256
-    buf_T        *bp = payload;
-    static char buf[PARSE_BUFSIZE];
-
-    // Finish if we are past the last line
-    if ((linenr_T)position.row >= bp->b_ml.ml_line_count)
-    {
-	*bytes_read = 0;
-	return NULL;
+	FOR_ALL_LANGS(lang)
+	    treesitter_list_lang(lang);
+	return;
     }
 
-    char *line = (char *)ml_get_buf(bp, position.row + 1, FALSE);
-    uint32_t cols = ml_get_buf_len(bp, position.row + 1);
-    uint32_t to_copy;
+    // Isolate the name.
+    name_end = skiptowhite(line);
+    linep = skipwhite(name_end);
 
-    // Should only be true if the last call didn't add a newline
-    if (position.column > cols)
+    // Handle ":treesitter info {lang}" subcommand.
+    if (STRNCMP(line, "info", name_end - line) == 0)
     {
-	*bytes_read = 0;
-	return NULL;
-    }
-
-    // Subtract one from buffer size so we can include newline
-    to_copy = MIN(cols - position.column, PARSE_BUFSIZE - 1);
-    memcpy(buf, line + position.column, to_copy);
-
-    // If to_copy == cols, then the entire line fits in the buffer - 1, add a
-    // newline. If to_copy == 0, then add a newline because we are at end of the
-    // line.
-    if (to_copy == cols || to_copy == 0)
-	buf[to_copy++] = NL;
-
-    *bytes_read = to_copy;
-
-    return buf;
-}
-
-/*
- * Decode callback for ts_parser_parse_with_options()
- */
-    static uint32_t
-parser_decode_callback(
-	const uint8_t *string,
-	uint32_t length,
-	int32_t *code_point)
-{
-    char_u *str = (char_u *)string;
-
-    if (length == 0)
-    {
-	*code_point = 0;
-	return 0;
-    }
-    else if (has_mbyte)
-    {
-	uint32_t char_len = (uint32_t)(*mb_ptr2len_len)(str, length);
-
-	if (char_len > length)
-	    // In middle of mutlibyte character
-	    return 0;
-
-	*code_point = (int32_t)(*mb_ptr2char)(str);
-	return char_len;
-    }
-
-    // Characters are just single bytes, just set it directly
-    *code_point = *string;
-    return 1;
-}
-
-/*
- * Start parsing a region in the language tree. If "lr" is NULL, then parse the
- * entire document. Returns OK on success and FAIL on failure.
- */
-    static int
-languagetree_parse_region(languagetree_T *lt, lt_region_T *lr)
-{
-    TSInput input;
-    TSTree  *res;
-
-    if ((lr != NULL && lr->lr_valid) || (lr == NULL && lt->lt_valid))
-	// Already valid, no need to parse
-	return OK;
-
-    if ((lr != NULL
-		&& !ts_parser_set_included_ranges(lt->lt_parser, lr->lr_region,
-	    lr->lr_len))
-	    || (lr == NULL && !ts_parser_set_included_ranges(lt->lt_parser,
-		    NULL, 0)))
-    {
-	iemsg("failed setting included ranges for TSParser");
-	return FAIL;
-    }
-
-    if (enc_utf8)
-	input.encoding = TSInputEncodingUTF8;
-    else if (enc_unicode == 2)
-    {
-	int prop = enc_canon_props(p_enc);
-
-	// Can either be UTF-16 or UCS-2, make sure it is UTF-16.
-	if (prop & (ENC_ENDIAN_B | ENC_2WORD))
-	    input.encoding = TSInputEncodingUTF16BE;
-	else if (prop & (ENC_ENDIAN_L | ENC_2WORD))
-	    input.encoding = TSInputEncodingUTF16LE;
+	lang = treesitter_find_lang(linep);
+	if (lang == NULL)
+	    semsg(_(e_treesitter_lang_not_found), linep);
 	else
-	    input.decode = parser_decode_callback;
+	    treesitter_list_lang(lang);
+	return;
     }
-    else
-	input.decode = parser_decode_callback;
 
-    input.payload = lt->lt_buf;
-    input.read = parser_buf_read_callback;
-
-    // Use previous tree for region is possible
-    res = lr == NULL ? lt->lt_tree : lr->lr_tree;
-    res = ts_parser_parse(lt->lt_parser, res, input);
-
-    if (res == NULL)
-	return FAIL;
-
-    if (lr != NULL)
+    // Handle ":treesitter load {lang}" subcommand
+    if (STRNCMP(line, "load", name_end - line) == 0)
     {
-	if (lr->lr_tree != NULL)
-	    ts_tree_delete(lr->lr_tree);
-	lr->lr_tree = res;
-	lr->lr_valid = true;
+	lang = treesitter_find_lang(linep);
 
-	lt->lt_num_valid_regions++;
-	if (lt->lt_num_valid_regions == lt->lt_num_regions)
-	    lt->lt_valid = true;
+	if (lang == NULL)
+	    semsg(_(e_treesitter_lang_not_found), linep);
+	else
+	    lang->tl_obj = treesitter_load_language(
+		    lang->tl_path, lang->tl_symbol, &lang->tl_handle);
+	return;
     }
-    else
+
+    // Handle ":treesitter define {name} {path}" subcommand
+    if (STRNCMP(line, "define", name_end - line) == 0)
     {
-	if (lt->lt_tree != NULL)
-	    ts_tree_delete(lt->lt_tree);
-	lt->lt_tree = res;
+	char_u *name = NULL;
 
-	lt->lt_valid = true;
-    }
+	// Isolate language name and parser path
+	line = linep;
+	name_end = skiptowhite(line);
+	linep = skipwhite(name_end);
 
-    return OK;
-}
-
-/*
- * Start parsing all invalid regions in the language tree, and handle all side
- * effects such as detecting new/removed injected languages. Returns OK on
- * success and FAIL on failure.
- */
-    static int
-languagetree_start(languagetree_T *lt, bool background UNUSED) // TODO: async
-{
-    int res = FAIL;
-
-    if (lt->lt_regions == NULL)
-	// Parse entire document
-	res = languagetree_parse_region(lt, NULL);
-    else
-	for (lt_region_T *lr = lt->lt_regions; lr != NULL; lr = lr->lr_next)
+	if (*linep == NUL)
 	{
-	    int pres = languagetree_parse_region(lt, lr);
-
-	    if (pres == FAIL)
-	    {
-		res = FAIL;
-		break;
-	    }
+	    emsg(_(e_invalid_argument));
+	    return;
 	}
 
-    if (res == FAIL)
-	return FAIL;
+	name = vim_strnsave(line, name_end - line);
+	if (name == NULL)
+	    return;
 
-    if (lt->lt_injection_query != NULL)
-    {
-	// Detect injected languages
+	treesitter_add_language(name, linep, NULL);
+	vim_free(name);
+	return;
     }
-
-    return OK;
 }
 
 /*
- * "treesitter_start({lang}, {buf})" function
+ * Handle command line completion for ":treesitter" command. TODO
  */
     void
-f_treesitter_start(typval_T *argvars, typval_T *rettv)
+set_context_in_treesitter_cmd(expand_T *xp, char_u *arg)
 {
-    buf_T	    *buf;
-    char_u	    *lang;
-    int		    res;
-
-    if (in_vim9script()
-	    && (check_for_string_arg(argvars, 0) == FAIL
-		|| check_for_opt_buffer_arg(argvars, 1) == FAIL))
-	return;
-
-    if (argvars[1].v_type == VAR_UNKNOWN)
-	buf = curbuf;
-    else
-	buf = tv_get_buf_from_arg(&argvars[1]);
-
-    if (buf == NULL)
-	return;
-
-    lang = tv_get_string(&argvars[0]);
-    if (lang == NULL)
-	return;
-
-    if (languagetree_new(buf, lang) == FAIL)
-	return;
-
-    res = languagetree_start(buf->b_languagetree, false);
-
-    rettv->v_type = VAR_BOOL;
-    rettv->vval.v_number = res == OK;
 }
 
 #endif // FEAT_TREESITTER

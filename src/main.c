@@ -1821,6 +1821,9 @@ getout(int exitval)
     if (!is_not_a_term_or_gui())
 	windgoto((int)Rows - 1, 0);
 
+#ifdef FEAT_TREESITTER
+    treesitter_uninit();
+#endif
 #ifdef FEAT_JOB_CHANNEL
     job_stop_on_exit();
 #endif

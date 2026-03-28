@@ -3816,5 +3816,5 @@ EXTERN char e_cannot_create_pipes[]
 EXTERN char e_treesitter_get_lang_error[]
 	INIT(= N_("E1576: Failed loading treesitter parser '%s'"));
 EXTERN char e_treesitter_lang_not_found[]
-	INIT(= N_("E1577: Library for language '%s' cannot be found"));
+	INIT(= N_("E1577: Treesitter parser for language '%s' not found"));
 #endif
