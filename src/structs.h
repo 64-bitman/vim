@@ -154,6 +154,37 @@ typedef struct {
 
 #ifdef FEAT_TREESITTER
 
+typedef struct langtree_region_S langtree_region_T;
+struct langtree_region_S
+{
+    TSTree		*lr_tree;
+    bool		lr_valid;
+
+    TSRange		*lr_ranges; // Note that this may be NULL to indicate
+				    // entire document.
+    uint32_t		lr_len;
+
+    langtree_region_T	*lr_next;
+};
+
+
+typedef struct langtree_S langtree_T;
+struct langtree_S
+{
+    void		*lt_lang;   // Opaque pointer to treesitter_lang_T
+    buf_T		*lt_buf;
+    TSParser		*lt_parser;
+
+    langtree_region_T   *lt_regions;
+    uint32_t		lt_regions_len;
+    uint32_t		lt_valid_regions_len;
+
+    TSQuery		*lt_injection_query;
+
+    langtree_T		*lt_children;
+    langtree_T		*lt_next;
+};
+
 #endif
 
 /*
@@ -3653,6 +3684,9 @@ struct file_buffer
 #endif
 #ifdef FEAT_DIFF
     int		b_diff_failed;	// internal diff failed for this buffer
+#endif
+#ifdef FEAT_TREESITTER
+    langtree_T	*b_langtree;	// Language tree for this buffer, may be NULL.
 #endif
 }; // file_buffer
 

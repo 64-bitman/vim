@@ -643,6 +643,14 @@ changed_common(
     // mark the buffer as modified
     changed();
 
+#ifdef FEAT_TREESITTER
+    if (curbuf->b_langtree != NULL)
+    {
+	langtree_update(curbuf->b_langtree, lnum, col, lnume, xtra);
+	langtree_parse(curbuf->b_langtree, NULL, 0);
+    }
+#endif
+
 #ifdef FEAT_EVAL
     // Immediately send this change to any listeners that require changes not
     // to be buffered.

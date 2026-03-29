@@ -35,17 +35,19 @@
 typedef struct treesitter_lang_S treesitter_lang_T;
 struct treesitter_lang_S
 {
-    HANDLE		tl_handle;  // Library handle
+    HANDLE		tl_handle;
     TSLanguage		*tl_obj;    // Opaque object, may be NULL if not loaded
 
     char_u		*tl_path;   // Path to language parser
     char_u		*tl_symbol; // Symbol name suffix
 
-    treesitter_lang_T	*tl_next;   // Next in list
-    treesitter_lang_T	*tl_prev;   // Previous in list
+    treesitter_lang_T	*tl_next;
+    treesitter_lang_T	*tl_prev;
 
     char_u		tl_name[1]; // Actually longer (language name)
 };
+
+static TSRange tsrange_max;
 
 static treesitter_lang_T *treesitter_langs = NULL;
 #define FOR_ALL_LANGS(l) for (l = treesitter_langs; l != NULL; l = l->tl_next)
@@ -74,6 +76,10 @@ treesitter_realloc(void *ptr, size_t size)
 treesitter_init(void)
 {
     ts_set_allocator(alloc, treesitter_calloc, treesitter_realloc, vim_free);
+
+    tsrange_max.end_byte = UINT32_MAX;
+    tsrange_max.end_point.row = UINT32_MAX;
+    tsrange_max.end_point.column = UINT32_MAX;
 }
 
     void
@@ -111,7 +117,7 @@ treesitter_load_language(char_u *path, char_u *symbol, HANDLE *handle)
     func = symbol_from_dll(h, (char *)IObuff);
     if (func == NULL)
     {
-	semsg(_(e_could_not_load_library_function_str), IObuff);
+	semsg(_(e_could_not_load_library_str_str), path, load_dll_error());
 	close_dll(h);
 	return NULL;
     }
@@ -199,24 +205,494 @@ treesitter_find_lang(char_u *name)
 }
 
 /*
- * Find the struct for the language named "name", and return its TSLanguage. If
- * it is not loaded, then load it. Returns NULL on failure.
+ * Find the struct for the language "name", and return it. If it is not
+ * loaded, then load it. Returns NULL on failure.
  */
-    static TSLanguage *
+    static treesitter_lang_T *
 treesitter_get_language(char_u *name)
 {
     treesitter_lang_T *lang = treesitter_find_lang(name);
 
     if (lang != NULL)
     {
+	int abi;
+
 	if (lang->tl_obj == NULL)
 	    lang->tl_obj = treesitter_load_language(
 		    lang->tl_path, lang->tl_symbol, &lang->tl_handle);
-	return lang->tl_obj;
+
+	if (lang->tl_obj != NULL)
+	{
+	    abi = ts_language_abi_version(lang->tl_obj);
+
+	    // Check if ABI is compatible with us
+	    if (abi >= TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION
+		    && abi <= TREE_SITTER_LANGUAGE_VERSION)
+		return lang;
+	    else
+	    {
+		semsg(_(e_treesitter_lang_incompatible_abi), abi);
+
+		ts_language_delete(lang->tl_obj);
+		close_dll(lang->tl_handle);
+	    }
+	}
+	return NULL;
     }
 
     semsg(_(e_treesitter_lang_not_found), name);
     return NULL;
+}
+
+    static uint32_t
+parser_decode_callback(
+	const uint8_t *string,
+	uint32_t length,
+	int32_t *code_point)
+{
+    char_u *str = (char_u *)string;
+
+    if (length == 0)
+    {
+	*code_point = 0;
+	return 0;
+    }
+    else if (has_mbyte)
+    {
+	uint32_t char_len = (uint32_t)(*mb_ptr2len_len)(str, length);
+
+	if (char_len > length)
+	    // In middle of mutlibyte character
+	    return 0;
+
+	*code_point = (int32_t)(*mb_ptr2char)(str);
+	return char_len;
+    }
+
+    // Characters are just single bytes, just set it directly
+    *code_point = *string;
+    return 1;
+}
+
+   static const char *
+parser_read_callback(
+	void *payload,
+	uint32_t byte_index UNUSED,
+	TSPoint position,
+	uint32_t *bytes_read)
+{
+#define PARSE_BUFSIZE 512
+    buf_T        *bp = payload;
+    static char buf[PARSE_BUFSIZE];
+
+    // Finish if we are past the last line
+    if ((linenr_T)position.row >= bp->b_ml.ml_line_count)
+    {
+	*bytes_read = 0;
+	return NULL;
+    }
+
+    char *line = (char *)ml_get_buf(bp, position.row + 1, FALSE);
+    uint32_t cols = ml_get_buf_len(bp, position.row + 1);
+    uint32_t to_copy;
+
+    // Should only be true if the last call didn't add a newline
+    if (position.column > cols)
+    {
+	*bytes_read = 0;
+	return NULL;
+    }
+
+    // Subtract one from buffer size so we can include newline
+    to_copy = MIN(cols - position.column, PARSE_BUFSIZE - 1);
+    memcpy(buf, line + position.column, to_copy);
+
+    // If to_copy == cols, then the entire line fits in the buffer - 1, add a
+    // newline. If to_copy == 0, then add a newline because we are at end of the
+    // line.
+    if (to_copy == cols || to_copy == 0)
+	buf[to_copy++] = NL;
+
+    *bytes_read = to_copy;
+
+    return buf;
+}
+
+/*
+ * Parse the the buffer and return the resulting TSTree. Returns NULL on
+ * failure.
+ */
+    static TSTree *
+treesitter_parse(
+	buf_T *buf,
+	TSParser *parser,
+	TSTree *old_tree)
+{
+    TSInput	input;
+    TSTree	*res;
+
+    if (enc_utf8)
+	input.encoding = TSInputEncodingUTF8;
+    else if (enc_unicode == 2)
+    {
+	int prop = enc_canon_props(p_enc);
+
+	// Can either be UTF-16 or UCS-2, make sure it is UTF-16.
+	if (prop & (ENC_ENDIAN_B | ENC_2WORD))
+	    input.encoding = TSInputEncodingUTF16BE;
+	else if (prop & (ENC_ENDIAN_L | ENC_2WORD))
+	    input.encoding = TSInputEncodingUTF16LE;
+	else
+	    input.decode = parser_decode_callback;
+    }
+    else
+	input.decode = parser_decode_callback;
+
+    input.payload = buf;
+    input.read = parser_read_callback;
+
+    res = ts_parser_parse(parser, old_tree, input);
+
+    if (res == NULL)
+	// Shouldn't return NULL, this is blocking
+	iemsg("ts_parser_parse() returned NULL?");
+
+    return res; 
+}
+
+/*
+ *
+ */
+    static bool
+treesitter_range_intercepts(TSRange a, TSRange b)
+{
+    if (a.start_byte == 0 && a.end_byte == 0
+	    && b.start_byte == 0 && a.end_byte == 0)
+    {
+	// Must use rows and columns
+	if (a.start_point.row < b.end_point.row
+		|| (a.start_point.row == b.end_point.row
+		    && a.start_point.column < b.end_point.column))
+	    if (b.start_point.row < a.end_point.row
+		    || (b.start_point.row == a.end_point.row
+			&& b.start_point.column < a.end_point.column))
+		return true;
+	return false;
+    }
+
+    return (a.end_byte >= b.start_byte && b.end_byte <= a.end_byte)
+	|| (b.end_byte >= a.start_byte && a.end_byte <= b.end_byte);
+}
+
+/*
+ * Note that "a" and "b" must be sorted in the correct order (first range starts
+ * first in document, later ones start later).
+ */
+    static bool
+treesitter_intercepts(TSRange *a, int alen, TSRange *b, int blen)
+{
+    int ap = 0;
+    int bp = 0;
+
+    while (ap < alen && bp < blen)
+    {
+	if (treesitter_range_intercepts(a[ap], b[bp]))
+	    return true;
+
+	// Advance index of range tha ends earlier before the other.
+	if (a[ap].end_point.row < b[bp].start_point.row)
+	    ap++;
+	else
+	    bp++;
+    }
+    return false;
+}
+
+    static const char *
+treesitter_query_error_str(TSQueryError error_type)
+{
+    switch (error_type) {
+	case TSQueryErrorSyntax:
+	    return "Invalid syntax";
+	case TSQueryErrorNodeType:
+	    return "Invalid node type";
+	case TSQueryErrorField:
+	    return "Invalid field name";
+	case TSQueryErrorCapture:
+	    return "Invalid capture name";
+	case TSQueryErrorStructure:
+	    return "Impossible pattern";
+	default:
+	    return "Unknown error";
+    }
+}
+
+/*
+ * Load the query file and return the TSQuery for it. Returns NULL on failure.
+ */
+    static TSQuery *
+treesitter_load_query_file(treesitter_lang_T *lang, char_u *path)
+{
+    FILE    *fp;
+    char    *buf;
+    int	    len;
+    int	    r;
+    TSQuery *query = NULL;
+
+    expand_env(path, NameBuff, MAXPATHL);
+    fp = mch_fopen((char *)NameBuff, "r");
+
+    if (fp == NULL
+	    || fseek(fp, 0L, SEEK_END) == -1
+	    || (len = ftell(fp)) == -1
+	    || fseek(fp, 0L, SEEK_SET) == -1)
+    {
+	semsg(_(e_treesitter_cannot_open_query_file), path);
+	if (fp != NULL)
+	    fclose(fp);
+	return NULL;
+    }
+
+    buf = alloc(len); // No need to include NUL since ts_query_new() has len arg
+    if (buf == NULL)
+    {
+	semsg(_(e_out_of_memory_allocating_nr_bytes), len);
+	fclose(fp);
+	return NULL;
+    }
+
+    r = (int)fread(buf, (size_t)1, (size_t)len, fp);
+    fclose(fp);
+
+    if (r == len)
+    {
+	TSQueryError	error;
+	uint32_t	error_off;
+
+	query = ts_query_new(lang->tl_obj, buf, len, &error_off, &error);
+	if (query == NULL)
+	    // Something wrong with query
+            semsg(_(e_treesitter_query_error_str),
+		    treesitter_query_error_str(error), error_off);
+    }
+    else
+	semsg(_(e_treesitter_cannot_open_query_file), path);
+
+    vim_free(buf);
+    return query;
+}
+
+/*
+ * Allocate a new language tree for buffer "buf" with the given language.
+ * Returns NULL on failure.
+ */
+    static langtree_T *
+langtree_new(treesitter_lang_T *lang, buf_T *buf)
+{
+    langtree_T *lt = ALLOC_CLEAR_ONE(langtree_T);
+
+    if (lt == NULL)
+	return NULL;
+
+    lt->lt_parser = ts_parser_new();
+    if (lt->lt_parser == NULL)
+    {
+	vim_free(lt);
+	return NULL;
+    }
+
+    lt->lt_lang = lang;
+    lt->lt_buf = buf;
+
+    // Should always succeed, because we check ABI version beforehand
+    ts_parser_set_language(lt->lt_parser, lang->tl_obj);
+
+    return lt;
+}
+
+    void
+langtree_free(langtree_T *lt)
+{
+    langtree_region_T	*lr = lt->lt_regions;
+    langtree_T		*lt_child = lt->lt_children;
+
+    while (lr != NULL)
+    {
+	langtree_region_T *next = lr->lr_next;
+
+	if (lr->lr_tree != NULL)
+	    ts_tree_delete(lr->lr_tree);
+	vim_free(lr->lr_ranges);
+	vim_free(lr);
+
+	lr = next;
+    }
+
+    while (lt_child != NULL)
+    {
+	langtree_T *next = lt_child->lt_next;
+
+	langtree_free(lt);
+	lt_child = next;
+    }
+
+    if (lt->lt_injection_query != NULL)
+	ts_query_delete(lt->lt_injection_query);
+    ts_parser_delete(lt->lt_parser);
+    vim_free(lt);
+}
+
+    static void
+langtree_load_injection_query(langtree_T *lt, char_u *path)
+{
+    TSQuery *query = treesitter_load_query_file(lt->lt_lang, path);
+
+    if (query != NULL)
+    {
+	if (lt->lt_injection_query != NULL)
+	    ts_query_delete(lt->lt_injection_query);
+	lt->lt_injection_query = query;
+    }
+}
+
+/*
+ *
+ */
+    static int
+langtree_parse_regions(langtree_T *lt, TSRange *ranges, int ranges_len)
+{
+    int ranges_parsed = 0;
+
+    if (lt->lt_regions == NULL)
+    {
+	// Set included ranges to entire document
+	lt->lt_regions = ALLOC_CLEAR_ONE(langtree_region_T);
+
+	if (lt->lt_regions == NULL)
+	    return 0;
+	lt->lt_regions_len = 1;
+    }
+
+    if (lt->lt_regions_len == lt->lt_valid_regions_len)
+	return 0;
+
+    for (langtree_region_T *lr = lt->lt_regions; lr != NULL; lr = lr->lr_next)
+    {
+	bool	res;
+	TSTree	*tree;
+
+	if (lr->lr_valid)
+	    continue;
+	if (lr->lr_ranges != NULL && ranges != NULL
+		&& !treesitter_intercepts(lr->lr_ranges, lr->lr_len,
+		    ranges, ranges_len))
+	    continue;
+
+	if (lr->lr_ranges == 0)
+	    res = ts_parser_set_included_ranges(lt->lt_parser, &tsrange_max, 1);
+	else
+	    res = ts_parser_set_included_ranges(lt->lt_parser, lr->lr_ranges,
+		    lr->lr_len);
+
+	if (!res)
+	{
+	    iemsg("ts_parser_set_included_ranges() fail");
+	    continue;
+	}
+
+	tree = treesitter_parse(lt->lt_buf, lt->lt_parser, lr->lr_tree);
+
+	if (tree != NULL)
+	{
+	    if (lr->lr_tree != NULL)
+		ts_tree_delete(lr->lr_tree);
+	    lr->lr_tree = tree;
+	    lr->lr_valid = true;
+	    ranges_parsed++;
+	}
+    }
+    return ranges_parsed;
+}
+
+/*
+ *
+ */
+    static void
+langtree_edit(langtree_T *lt, TSInputEdit *edit, TSRange *changed)
+{
+    for (langtree_region_T *lr = lt->lt_regions; lr != NULL; lr = lr->lr_next)
+    {
+	if (lr->lr_tree != NULL)
+	{
+	    ts_tree_edit(lr->lr_tree, edit);
+
+	    // Update region range
+	    vim_free(lr->lr_ranges);
+	    lr->lr_ranges = ts_tree_included_ranges(lr->lr_tree, &lr->lr_len);
+
+	    // Check if region is valid or not
+	    if (lr->lr_ranges != NULL
+		    && treesitter_intercepts(changed, 1, lr->lr_ranges,
+			lr->lr_len))
+		lr->lr_valid = false;
+	}
+    }
+
+    ts_parser_reset(lt->lt_parser);
+
+    for (langtree_T *c = lt->lt_children; c != NULL; c = c->lt_next)
+	langtree_edit(lt, edit, changed);
+}
+    
+/*
+ *
+ */
+    void
+langtree_update(
+	langtree_T  *lt,
+	linenr_T    start,
+	colnr_T	    col,
+	linenr_T    end,
+	long	    added)
+{
+    buf_T	*buf = lt->lt_buf;
+    TSInputEdit	edit;
+    TSRange	changed;
+
+    edit.start_point.row = start;
+    edit.start_point.column = col;
+    edit.start_byte = ml_find_line_or_offset(buf, edit.start_point.row, NULL);
+    edit.old_end_point.row = end + added - 1;
+    edit.old_end_point.column = ml_get_buf_len(buf, edit.old_end_point.row);
+    edit.old_end_byte = ml_find_line_or_offset(buf, edit.old_end_point.row, NULL);
+    edit.new_end_point.row = end - 1 + added;
+    edit.new_end_point.column = ml_get_buf_len(buf, edit.new_end_point.row);
+    edit.new_end_byte = ml_find_line_or_offset(buf, edit.new_end_point.row, NULL);
+
+    if (edit.old_end_point.column > 0)
+	edit.old_end_point.column--;
+    if (edit.new_end_point.column > 0)
+	edit.new_end_point.column--;
+
+    changed.start_point.row = edit.start_point.row;
+    changed.start_point.column = edit.start_point.column;
+    changed.start_byte = edit.start_byte;
+    changed.end_point.row = edit.old_end_point.row;
+    changed.end_point.column = edit.old_end_point.column;
+    changed.end_byte = edit.old_end_byte;
+
+    langtree_edit(lt, &edit, &changed);
+}
+
+    void
+langtree_parse(langtree_T *lt, TSRange *ranges, int ranges_len)
+{
+    int parsed = langtree_parse_regions(lt, ranges, ranges_len);
+
+    if (parsed == 0)
+	return;
+
+
 }
 
 /*
@@ -296,7 +772,7 @@ ex_treesitter(exarg_T *eap)
     name_end = skiptowhite(line);
     linep = skipwhite(name_end);
 
-    // Handle ":treesitter info {lang}" subcommand.
+    // Handle ":treesitter info {name}" subcommand.
     if (STRNCMP(line, "info", name_end - line) == 0)
     {
 	lang = treesitter_find_lang(linep);
@@ -307,7 +783,7 @@ ex_treesitter(exarg_T *eap)
 	return;
     }
 
-    // Handle ":treesitter load {lang}" subcommand
+    // Handle ":treesitter load {name}" subcommand
     if (STRNCMP(line, "load", name_end - line) == 0)
     {
 	lang = treesitter_find_lang(linep);
@@ -342,6 +818,33 @@ ex_treesitter(exarg_T *eap)
 
 	treesitter_add_language(name, linep, NULL);
 	vim_free(name);
+	return;
+    }
+
+    // Handle ":treesitter start {name}" subcommand
+    if (STRNCMP(line, "start", name_end - line) == 0)
+    {
+	if (curbuf->b_langtree != NULL)
+	    return;
+
+	lang = treesitter_get_language(linep);
+
+	if (lang != NULL)
+	{
+	    curbuf->b_langtree = langtree_new(lang, curbuf);
+	    langtree_parse(curbuf->b_langtree, NULL, 0);
+	}
+	return;
+    }
+
+
+    // Handle ":treesitter injection-query {path}" subcommand
+    if (STRNCMP(line, "injection-query", name_end - line) == 0)
+    {
+	if (curbuf->b_langtree == NULL)
+	    emsg(_(e_treesitter_buffer_not_attached));
+	else
+	    langtree_load_injection_query(curbuf->b_langtree, linep);
 	return;
     }
 }

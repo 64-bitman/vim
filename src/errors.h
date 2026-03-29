@@ -3817,4 +3817,12 @@ EXTERN char e_treesitter_get_lang_error[]
 	INIT(= N_("E1576: Failed loading treesitter parser '%s'"));
 EXTERN char e_treesitter_lang_not_found[]
 	INIT(= N_("E1577: Treesitter parser for language '%s' not found"));
+EXTERN char e_treesitter_lang_incompatible_abi[]
+	INIT(= N_("E1577: Treesitter parser has incompatible ABI version %d"));
+EXTERN char e_treesitter_cannot_open_query_file[]
+	INIT(= N_("E1577: Cannot read Treesitter query file %s"));
+EXTERN char e_treesitter_query_error_str[]
+	INIT(= N_("E1577: Failed loading query file: %s at byte %d"));
+EXTERN char e_treesitter_buffer_not_attached[]
+	INIT(= N_("E1577: Buffer does not have a Treesitter parser attached to it"));
 #endif
