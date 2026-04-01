@@ -15,7 +15,7 @@
 
 #if defined(FEAT_EVAL)
 /*
- * Mark references in functions of buffers.
+ * Mark references in functions + language trees (treesitter) of buffers.
  */
     int
 set_ref_in_buffers(int copyID)
@@ -50,6 +50,10 @@ set_ref_in_buffers(int copyID)
 	    abort = abort || set_ref_in_callback(&bp->b_tfu_cb, copyID);
 	if (!abort)
 	    abort = abort || set_ref_in_callback(&bp->b_ffu_cb, copyID);
+#ifdef FEAT_TREESITTER
+	if (!abort && bp->b_langtree != NULL)
+	    abort = abort || set_ref_in_langtree(bp->b_langtree, copyID);
+#endif
 	if (abort)
 	    break;
     }

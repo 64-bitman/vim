@@ -171,7 +171,7 @@ garbage_collect(int testing)
     // v: vars
     abort = abort || garbage_collect_vimvars(copyID);
 
-    // callbacks in buffers
+    // callbacks and language trees (treesitter) in buffers
     abort = abort || set_ref_in_buffers(copyID);
 
     // 'completefunc', 'omnifunc' and 'thesaurusfunc' callbacks

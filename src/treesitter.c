@@ -29,8 +29,6 @@
 # define load_dll_error dlerror
 #endif
 
-typedef struct treesitter_predicate_S treesitter_predicate_T;
-
 typedef enum
 {
     PREDICATE_FLAG_NONE = 0,	    // ""
@@ -51,13 +49,16 @@ typedef enum
     PREDICATE_UNKNOWN	// Unknown predicate or directive. TODO user defined
 } treesitter_predicate_type_T;
 
-struct treesitter_predicate_S
+#define IS_PREDICATE(p) ((p) > PREDICATES && (p) < DIRECTIVES)
+#define IS_DIRECTIVE(p) ((p) > DIRECTIVES && (p) < PREDICATE_UNKNOWN)
+
+typedef struct
 {
     treesitter_predicate_type_T	tp_type;
     char_u			tp_flags;
     const TSQueryPredicateStep	*tp_steps;  // Owned by the TSQuery object
     uint32_t			tp_len;
-};
+} treesitter_predicate_T;
 
 typedef struct
 {
@@ -475,6 +476,23 @@ treesitter_intercepts(TSRange *a, int alen, TSRange *b, int blen)
     return false;
 }
 
+/*
+ * Return the range that the node covers as a TSRange struct.
+ */
+    static TSRange
+treesitter_node_to_range(TSNode node)
+{
+    TSRange range;
+
+    range.start_point = ts_node_start_point(node);
+    range.start_byte = ts_node_start_byte(node);
+
+    range.end_point = ts_node_end_point(node);
+    range.end_byte = ts_node_end_byte(node);
+    
+    return range;
+}
+
     static const char *
 treesitter_query_error_str(TSQueryError error_type)
 {
@@ -738,8 +756,9 @@ treesitter_get_query(treesitter_lang_T *lang, char_u *source, bool is_path)
  */
     static bool
 treesitter_predicate_eq(
-	langtree_T		*lt,
+	TSQuery			*query,
 	treesitter_predicate_T	*pred,
+	buf_T			*buf,
 	const TSQueryCapture	*captures,
 	uint32_t		captures_len)
 {
@@ -747,25 +766,142 @@ treesitter_predicate_eq(
 }
 
 /*
- *
+ * Return true if the given match is allowed for "pred", otherwise false
  */
     static bool
-treesitter_match_predicates(
-	treesitter_query_T  *tq,
-	TSQueryMatch	    *match)
+treesitter_match_predicate(
+	TSQuery			*query,
+	treesitter_predicate_T  *pred,
+	buf_T			*buf,
+	TSQueryMatch		match)
 {
     return true;
 }
 
 /*
- *
+ * Implementation of the "set! {keye} {value}" directive.
  */
     static void
-treesitter_apply_directives(
-	treesitter_query_T  *tq,
-	dict_T		    *metadata,
-	TSQueryMatch	    *match)
+treesitter_directive_set(
+	TSQuery			*query,
+	treesitter_predicate_T	*dir,
+	dict_T			*metadata)
 {
+    uint32_t len;
+    TSQueryPredicateStep key = dir->tp_steps[1];
+    TSQueryPredicateStep val;
+
+    if (dir->tp_len == 2)
+        dict_add_string(metadata, (char *)ts_query_string_value_for_id(query,
+		    key.value_id, &len), NULL);
+    else
+    {
+        val = dir->tp_steps[2];
+        dict_add_string(metadata, (char *)ts_query_string_value_for_id(
+		    query, key.value_id, &len),
+		(char_u *)ts_query_string_value_for_id(query,
+		    val.value_id, &len));
+    }
+}
+
+
+/*
+ * Apply the directive "dir" to "metadata".
+ */
+    static void
+treesitter_apply_directive(
+	TSQuery			*query,
+	treesitter_predicate_T  *dir,
+	buf_T			*buf,
+	TSQueryMatch		match,
+	dict_T			*metadata)
+{
+    switch (dir->tp_type)
+    {
+	case DIRECTIVE_SET:
+	    treesitter_directive_set(query, dir, metadata);
+            break;
+	case DIRECTIVE_OFFSET:
+	    break;
+	default:
+	    siemsg("Unknown directive type %d", dir->tp_type);
+	    return;
+    }
+}
+
+/*
+ * Wrapper around ts_query_cursor_next_match(), that handles predicates and
+ * directives. Returns OK if there was a match, NOTDONE if there was a match but
+ * it was not allowed, and FAIL when finished or failure.
+ *
+ * The match is stored in "matchstore", and any metadata from directives is
+ * stored in "metadatastore". If "*metadatastore" is NULL, then a dict is
+ * allocated (if there are directives for this match), otherwise the
+ * pre-existing dict is used.
+ */
+    static int
+treesitter_next_match(
+	TSQuery			*query,
+	TSQueryCursor		*cursor,
+	buf_T			*buf,
+	treesitter_pattern_T	*pats,
+	uint32_t		patslen,
+	TSQueryMatch		*matchstore,
+	dict_T			**metadatastore)
+{
+    TSQueryMatch	    match;
+    treesitter_pattern_T    *pat;
+    dict_T		    *metadata = *metadatastore;
+
+    if (!ts_query_cursor_next_match(cursor, &match))
+	return FAIL;
+
+    if (match.pattern_index >= patslen)
+    {
+	// Not sure if this can happen...
+	siemsg("treesitter: pattern index %d is larger than "
+		"number of patterns %d", match.pattern_index, patslen);
+        return FAIL;
+    }
+    pat = pats + match.pattern_index;
+
+    // TODO: instead of looping through every predicate and checking if it is an
+    // actual predicate or directive, store indexes to both predicates and
+    // directives in separate arrays?
+
+    // Go through all predicates and check if match is allowed
+    for (uint32_t i = 0; i < pat->tpa_len; i++)
+    {
+	treesitter_predicate_T *pred = pat->tpa_predicates + i;
+
+	if (!IS_PREDICATE(pred->tp_type))
+	    continue;
+
+	if (!treesitter_match_predicate(query, pred, buf, match))
+	    return NOTDONE;
+    }
+
+    // Apply directives
+    for (uint32_t i = 0; i < pat->tpa_len; i++)
+    {
+	treesitter_predicate_T *dir = pat->tpa_predicates + i;
+
+	if (metadata == NULL)
+	{
+	    metadata = dict_alloc();
+	    if (metadata == NULL)
+		return FAIL;
+	}
+
+	if (!IS_DIRECTIVE(dir->tp_type))
+	    continue;
+
+	treesitter_apply_directive(query, dir, buf, match, metadata);
+    }
+
+    *metadatastore = metadata;
+
+    return OK;
 }
 
 /*
@@ -956,11 +1092,86 @@ langtree_update(
 /*
  *
  */
-    static void
-langtree_handle_injections(langtree_T *lt)
+    static bool
+langtree_handle_injection(
+	langtree_T	*lt,
+	TSQueryMatch	match,
+	char_u		**lang,
+	bool		*combined,
+	TSRange	    	**ranges,
+	uint32_t    	*rangeslen,
+	dict_T	    	*metadata)
 {
+    return true;
+}
 
+/*
+ *
+ */
+    static void
+langtree_handle_injections(langtree_T *lt, TSRange *ranges, uint32_t rangeslen)
+{
+    TSQuery		    *query = lt->lt_lang->tl_injection_query->tq_query;
+    treesitter_pattern_T    *pats = lt->lt_lang->tl_injection_query->tq_patterns;
+    uint32_t		    patslen = lt->lt_lang->tl_injection_query->tq_len;
+    TSQueryCursor	    *cursor = ts_query_cursor_new();
 
+    TSRange		    *actual_ranges = ranges;
+    uint32_t		    actual_rangeslen = rangeslen;
+
+    for (langtree_region_T *lr = lt->lt_regions; lr != NULL; lr = lr->lr_next)
+    {
+	TSNode	    root = ts_tree_root_node(lr->lr_tree);
+	TSRange	    full_range;
+
+	if (lr->lr_tree == NULL)
+	{
+	    // Shouldn't happen
+	    iemsg("TSTree in region is NULL?");
+	    continue;
+	}
+
+	ts_query_cursor_exec(cursor, query, root);
+
+	if (ranges == NULL)
+	{
+	    full_range = treesitter_node_to_range(root);
+	    actual_ranges = &full_range;
+	    actual_rangeslen = 1;
+	}
+
+	for (uint32_t i = 0; i < actual_rangeslen; i++)
+	{
+	    TSRange	    cur_range = actual_ranges[i];
+	    TSQueryMatch    match;
+
+	    if (!ts_query_cursor_set_point_range(cursor, cur_range.start_point,
+		    cur_range.end_point))
+	    {
+		iemsg("ts_query_cursor_set_point_range() fail");
+		continue;
+	    }
+
+	    // Go through all matches, checking predicates and applying
+	    // directives.
+	    while (true)
+	    {
+		dict_T	*metadata = NULL;
+		int	ret = treesitter_next_match(query, cursor, lt->lt_buf,
+			pats, patslen, &match, &metadata);
+
+		if (ret == FAIL)
+		    break;
+		else if (ret == NOTDONE)
+		    continue;
+
+		if (metadata != NULL)
+		    dict_unref(metadata);
+	    }
+	}
+    }
+
+    ts_query_cursor_delete(cursor);
 }
 
 /*
@@ -976,7 +1187,18 @@ langtree_parse(langtree_T *lt, TSRange *ranges, int ranges_len)
 	return;
 
     if (lt->lt_lang->tl_injection_query != NULL)
-	langtree_handle_injections(lt);
+	langtree_handle_injections(lt, NULL, 0);
+}
+
+/*
+ * Mark references for dictionaries used by the language tree (and child
+ * language trees).
+ */
+    bool
+set_ref_in_langtree(langtree_T *lt, int copyID)
+{
+    // TODO: implement
+    return false;
 }
 
 /*
