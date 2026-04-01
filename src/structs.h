@@ -154,14 +154,15 @@ typedef struct {
 
 #ifdef FEAT_TREESITTER
 
+typedef struct treesitter_lang_S treesitter_lang_T;
+
 typedef struct langtree_region_S langtree_region_T;
 struct langtree_region_S
 {
     TSTree		*lr_tree;
     bool		lr_valid;
 
-    TSRange		*lr_ranges; // Note that this may be NULL to indicate
-				    // entire document.
+    TSRange		*lr_ranges;
     uint32_t		lr_len;
 
     langtree_region_T	*lr_next;
@@ -171,15 +172,13 @@ struct langtree_region_S
 typedef struct langtree_S langtree_T;
 struct langtree_S
 {
-    void		*lt_lang;   // Opaque pointer to treesitter_lang_T
+    treesitter_lang_T	*lt_lang;
     buf_T		*lt_buf;
     TSParser		*lt_parser;
 
     langtree_region_T   *lt_regions;
     uint32_t		lt_regions_len;
     uint32_t		lt_valid_regions_len;
-
-    TSQuery		*lt_injection_query;
 
     langtree_T		*lt_children;
     langtree_T		*lt_next;

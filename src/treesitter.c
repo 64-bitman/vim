@@ -29,10 +29,56 @@
 # define load_dll_error dlerror
 #endif
 
+typedef struct treesitter_predicate_S treesitter_predicate_T;
+
+typedef enum
+{
+    PREDICATE_FLAG_NONE = 0,	    // ""
+    PREDICATE_FLAG_ANY = 1 << 0,    // "any-"
+    PREDICATE_FLAG_NOT = 1 << 1,    // "not-"
+} treesitter_predicate_flags_T;
+
+typedef enum
+{
+    PREDICATES,		// Predicates
+    PREDICATE_EQ,	// "eq? {capture} {string|capture}"
+    PREDICATE_MATCH,	// "match? {capture} {regex}"
+
+    DIRECTIVES,		// Directives
+    DIRECTIVE_SET,	// "set! {key} {value}"
+    DIRECTIVE_OFFSET,	// "offset! {capture} srow scol erow ecol"
+
+    PREDICATE_UNKNOWN	// Unknown predicate or directive. TODO user defined
+} treesitter_predicate_type_T;
+
+struct treesitter_predicate_S
+{
+    treesitter_predicate_type_T	tp_type;
+    char_u			tp_flags;
+    const TSQueryPredicateStep	*tp_steps;  // Owned by the TSQuery object
+    uint32_t			tp_len;
+};
+
+typedef struct
+{
+    treesitter_predicate_T  *tpa_predicates; // List of predicates and
+					     // directives.
+    uint32_t		    tpa_len;
+} treesitter_pattern_T;
+
+typedef struct
+{
+    TSQuery	*tq_query;
+    char_u	*tq_source;
+    bool	tq_ispath;
+
+    treesitter_pattern_T    *tq_patterns;
+    uint32_t		    tq_len;
+} treesitter_query_T;
+
 /*
  * Represents Treesitter language library
  */
-typedef struct treesitter_lang_S treesitter_lang_T;
 struct treesitter_lang_S
 {
     HANDLE		tl_handle;
@@ -40,6 +86,8 @@ struct treesitter_lang_S
 
     char_u		*tl_path;   // Path to language parser
     char_u		*tl_symbol; // Symbol name suffix
+
+    treesitter_query_T	*tl_injection_query;
 
     treesitter_lang_T	*tl_next;
     treesitter_lang_T	*tl_prev;
@@ -52,6 +100,8 @@ static TSRange tsrange_max;
 static treesitter_lang_T *treesitter_langs = NULL;
 #define FOR_ALL_LANGS(l) for (l = treesitter_langs; l != NULL; l = l->tl_next)
 
+static int treesitter_query_setup(treesitter_lang_T *lang, treesitter_query_T *tq);
+static void treesitter_free_query(treesitter_query_T *tq);
 static void treesitter_free_lang(treesitter_lang_T *lang);
 
 /*
@@ -140,6 +190,9 @@ treesitter_load_language(char_u *path, char_u *symbol, HANDLE *handle)
     static void
 treesitter_free_lang(treesitter_lang_T *lang)
 {
+    if (lang->tl_injection_query != NULL)
+	treesitter_free_query(lang->tl_injection_query);
+
     if (lang->tl_obj != NULL)
 	ts_language_delete(lang->tl_obj);
     if (lang->tl_handle != NULL)
@@ -160,9 +213,10 @@ treesitter_free_lang(treesitter_lang_T *lang)
 
 /*
  * Add the language to the global list. This does not load the langauge parser,
- * that is done when neeeded. Returns OK on success and FAIL on failure.
+ * that is done when neeeded. Returns the lang object on success and NULL on
+ * failure.
  */
-    static int
+    static treesitter_lang_T *
 treesitter_add_language(char_u *name, char_u *path, char_u *symbol_name)
 {
     treesitter_lang_T *lang;
@@ -171,7 +225,7 @@ treesitter_add_language(char_u *name, char_u *path, char_u *symbol_name)
     if (lang == NULL)
     {
 	emsg(_(e_out_of_memory));
-	return FAIL;
+	return NULL;
     }
 
     sprintf((char *)lang->tl_name, "%s", name);
@@ -182,12 +236,12 @@ treesitter_add_language(char_u *name, char_u *path, char_u *symbol_name)
     {
 	emsg(_(e_out_of_memory));
 	treesitter_free_lang(lang);
-	return FAIL;
+	return NULL;
     }
 
     lang->tl_next = treesitter_langs;
     treesitter_langs = lang;
-    return OK;
+    return lang;
 }
 
 /*
@@ -205,8 +259,8 @@ treesitter_find_lang(char_u *name)
 }
 
 /*
- * Find the struct for the language "name", and return it. If it is not
- * loaded, then load it. Returns NULL on failure.
+ * Find the struct for the language "name", and return it. If it is not loaded,
+ * then load it and initialize any objects. Returns NULL on failure.
  */
     static treesitter_lang_T *
 treesitter_get_language(char_u *name)
@@ -218,8 +272,21 @@ treesitter_get_language(char_u *name)
 	int abi;
 
 	if (lang->tl_obj == NULL)
+	{
 	    lang->tl_obj = treesitter_load_language(
 		    lang->tl_path, lang->tl_symbol, &lang->tl_handle);
+
+	    if (lang->tl_injection_query != NULL)
+	    {
+		treesitter_query_setup(lang, lang->tl_injection_query);
+
+		if (lang->tl_injection_query == NULL)
+		{
+		    treesitter_free_query(lang->tl_injection_query);
+		    lang->tl_injection_query = NULL;
+		}
+	    }
+	}
 
 	if (lang->tl_obj != NULL)
 	{
@@ -411,6 +478,7 @@ treesitter_intercepts(TSRange *a, int alen, TSRange *b, int blen)
     static const char *
 treesitter_query_error_str(TSQueryError error_type)
 {
+    // Taken from Neovim
     switch (error_type) {
 	case TSQueryErrorSyntax:
 	    return "Invalid syntax";
@@ -427,8 +495,23 @@ treesitter_query_error_str(TSQueryError error_type)
     }
 }
 
+    static TSQuery *
+treesitter_load_query(treesitter_lang_T *lang, char_u *str, uint32_t len)
+{
+    TSQueryError    error;
+    uint32_t	    error_off = 0;
+    TSQuery	    *query;
+
+    query = ts_query_new(lang->tl_obj, (char *)str, len, &error_off, &error);
+    if (query == NULL)
+	// Something wrong with query
+	semsg(_(e_treesitter_query_error_str),
+		treesitter_query_error_str(error), error_off);
+    return query;
+}
+
 /*
- * Load the query file and return the TSQuery for it. Returns NULL on failure.
+ * Load the query file and return it. Returns NULL on failure.
  */
     static TSQuery *
 treesitter_load_query_file(treesitter_lang_T *lang, char_u *path)
@@ -465,21 +548,224 @@ treesitter_load_query_file(treesitter_lang_T *lang, char_u *path)
     fclose(fp);
 
     if (r == len)
-    {
-	TSQueryError	error;
-	uint32_t	error_off;
-
-	query = ts_query_new(lang->tl_obj, buf, len, &error_off, &error);
-	if (query == NULL)
-	    // Something wrong with query
-            semsg(_(e_treesitter_query_error_str),
-		    treesitter_query_error_str(error), error_off);
-    }
+	query = treesitter_load_query(lang, (char_u *)buf, len);
     else
 	semsg(_(e_treesitter_cannot_open_query_file), path);
 
     vim_free(buf);
     return query;
+}
+
+    static void
+treesitter_free_query(treesitter_query_T *tq)
+{
+
+    if (tq->tq_query != NULL)
+    {
+	for (uint32_t i = 0; i < tq->tq_len; i++)
+	{
+	    treesitter_pattern_T *pat = tq->tq_patterns + i;
+
+	    vim_free(pat->tpa_predicates);
+	}
+	vim_free(tq->tq_patterns);
+
+	ts_query_delete(tq->tq_query);
+    }
+    vim_free(tq->tq_source);
+    vim_free(tq);
+}
+
+/*
+ * If "tq" is not loaded ("tq_query" is NULL), then create it and load the
+ * predicates/directives. Returns OK on success and FAIL on failure.
+ */
+    static int
+treesitter_query_setup(treesitter_lang_T *lang, treesitter_query_T *tq)
+{
+    char_u	*source = tq->tq_source;
+    uint32_t    n_pats;
+
+    if (tq->tq_query != NULL)
+	return OK;
+
+    if (tq->tq_ispath)
+	tq->tq_query = treesitter_load_query_file(lang, source);
+    else
+	tq->tq_query = treesitter_load_query(lang, source, STRLEN(source));
+    if (tq->tq_query == NULL)
+	return FAIL;
+
+    n_pats = ts_query_pattern_count(tq->tq_query);
+    tq->tq_patterns = ALLOC_CLEAR_MULT(treesitter_pattern_T, n_pats);
+    if (tq->tq_patterns == NULL)
+	// No need to free stuff, caller will do that on failure
+	return FAIL;
+    tq->tq_len = n_pats;
+
+    // Each pattern may have mutliple predicates or directives.
+    for (uint32_t i = 0; i < n_pats; i++)
+    {
+	treesitter_pattern_T	    *pat = tq->tq_patterns + i;
+	uint32_t		    n_steps;
+	const TSQueryPredicateStep  *steps;
+
+	steps = ts_query_predicates_for_pattern(tq->tq_query, i, &n_steps);
+	if (n_steps == 0)
+	    // The pattern will just have zero predicates, must still increment
+	    // index as it is the ID.
+	    continue;
+
+	// Get number of predicates in pattern
+	for (uint32_t k = 0; k < n_steps; k++)
+	    if (steps[k].type == TSQueryPredicateStepTypeDone)
+		pat->tpa_len++;
+
+	pat->tpa_predicates = ALLOC_CLEAR_MULT(treesitter_predicate_T,
+		pat->tpa_len);
+	if (pat->tpa_predicates == NULL)
+	    return FAIL;
+
+	for (uint32_t k = 0, n = 0; k < n_steps; n++)
+	{
+	    treesitter_predicate_T  *pred = pat->tpa_predicates + n;
+	    const char		    *name;
+	    uint32_t		    namelen;
+
+	    // Get number of steps in predicate (excluding the sentinel)
+	    for (uint32_t j = k; j < n_steps; j++)
+		if (steps[j].type == TSQueryPredicateStepTypeDone)
+		{
+		    pred->tp_len = j - k;
+		    break;
+		}
+	    pred->tp_steps = steps + k;
+	    k += pred->tp_len + 1;
+
+	    // First step is the name of the predicate/directive
+	    pred->tp_flags = PREDICATE_FLAG_NONE;
+	    pred->tp_type = PREDICATE_UNKNOWN;
+
+	    if (pred->tp_steps->type != TSQueryPredicateStepTypeString)
+	    {
+		emsg(_(e_treesitter_invalid_predicate_name));
+		return FAIL;
+	    }
+
+            name = ts_query_string_value_for_id(tq->tq_query,
+		    pred->tp_steps->value_id, &namelen);
+            while (true)
+	    {
+		if (STRNCMP(name, "any-", 4) == 0)
+		    pred->tp_flags |= PREDICATE_FLAG_ANY;
+		else if (STRNCMP(name, "not-", 4) == 0)
+		    pred->tp_flags |= PREDICATE_FLAG_NOT;
+		else
+		    break;
+	    }
+	    if (*name == NUL)
+	    {
+		emsg(_(e_treesitter_invalid_predicate_name));
+		return FAIL;
+	    }
+
+	    if (STRCMP(name, "eq?") == 0)
+	    {
+		if (pred->tp_len == 3
+			&& pred->tp_steps[1].type
+			== TSQueryPredicateStepTypeCapture)
+		    pred->tp_type = PREDICATE_EQ;
+		else
+		{
+		    emsg(_(e_treesitter_invalid_predicate_args));
+		    return FAIL;
+		}
+	    }
+	    else if (STRCMP(name, "set!") == 0)
+	    {
+		if ((pred->tp_len == 2 || pred->tp_len == 3)
+			&& pred->tp_steps[1].type
+			== TSQueryPredicateStepTypeString
+			&& (pred->tp_len == 2 || pred->tp_steps[2].type
+			== TSQueryPredicateStepTypeString))
+		    pred->tp_type = DIRECTIVE_SET;
+		else
+		{
+		    emsg(_(e_treesitter_invalid_predicate_args));
+		    return FAIL;
+		}
+	    }
+	}
+    }
+
+    return OK;
+}
+
+/*
+ * Return a query struct from the given source. If "is_path" is true, then
+ * "source" is a path to a file, otherwise it is a string containing the query.
+ * If "lang->tl_obj" is not NULL, then the query object is created. Returns NULL
+ * on failure.
+ */
+    static treesitter_query_T *
+treesitter_get_query(treesitter_lang_T *lang, char_u *source, bool is_path)
+{
+    treesitter_query_T *tq = ALLOC_CLEAR_ONE(treesitter_query_T);
+
+    if (tq == NULL)
+	return NULL;
+
+    tq->tq_source = vim_strsave(source);
+    if (tq->tq_source == NULL)
+    {
+	vim_free(tq);
+	return NULL;
+    }
+
+    tq->tq_ispath = is_path;
+
+    if (lang->tl_obj != NULL && treesitter_query_setup(lang, tq) == FAIL)
+    {
+	treesitter_free_query(tq);
+	return NULL;
+    }
+
+    return tq;
+}
+
+/*
+ * Implementation of the "eq? {capture} {string|capture}" predicate.
+ */
+    static bool
+treesitter_predicate_eq(
+	langtree_T		*lt,
+	treesitter_predicate_T	*pred,
+	const TSQueryCapture	*captures,
+	uint32_t		captures_len)
+{
+    return true;
+}
+
+/*
+ *
+ */
+    static bool
+treesitter_match_predicates(
+	treesitter_query_T  *tq,
+	TSQueryMatch	    *match)
+{
+    return true;
+}
+
+/*
+ *
+ */
+    static void
+treesitter_apply_directives(
+	treesitter_query_T  *tq,
+	dict_T		    *metadata,
+	TSQueryMatch	    *match)
+{
 }
 
 /*
@@ -536,27 +822,13 @@ langtree_free(langtree_T *lt)
 	lt_child = next;
     }
 
-    if (lt->lt_injection_query != NULL)
-	ts_query_delete(lt->lt_injection_query);
     ts_parser_delete(lt->lt_parser);
     vim_free(lt);
 }
 
-    static void
-langtree_load_injection_query(langtree_T *lt, char_u *path)
-{
-    TSQuery *query = treesitter_load_query_file(lt->lt_lang, path);
-
-    if (query != NULL)
-    {
-	if (lt->lt_injection_query != NULL)
-	    ts_query_delete(lt->lt_injection_query);
-	lt->lt_injection_query = query;
-    }
-}
-
 /*
- *
+ * Parse all invalid regions in the language tree. If "ranges" is not NULL, then
+ * only parse regions that intercept "ranges".
  */
     static int
 langtree_parse_regions(langtree_T *lt, TSRange *ranges, int ranges_len)
@@ -614,9 +886,6 @@ langtree_parse_regions(langtree_T *lt, TSRange *ranges, int ranges_len)
     return ranges_parsed;
 }
 
-/*
- *
- */
     static void
 langtree_edit(langtree_T *lt, TSInputEdit *edit, TSRange *changed)
 {
@@ -645,7 +914,7 @@ langtree_edit(langtree_T *lt, TSInputEdit *edit, TSRange *changed)
 }
     
 /*
- *
+ * Update the language tree incrementally with the given changes.
  */
     void
 langtree_update(
@@ -684,15 +953,30 @@ langtree_update(
     langtree_edit(lt, &edit, &changed);
 }
 
+/*
+ *
+ */
+    static void
+langtree_handle_injections(langtree_T *lt)
+{
+
+
+}
+
+/*
+ * Parse the language tree and handle injected languages.
+ */
     void
 langtree_parse(langtree_T *lt, TSRange *ranges, int ranges_len)
 {
     int parsed = langtree_parse_regions(lt, ranges, ranges_len);
 
     if (parsed == 0)
+	// Everything is valid
 	return;
 
-
+    if (lt->lt_lang->tl_injection_query != NULL)
+	langtree_handle_injections(lt);
 }
 
 /*
@@ -796,31 +1080,6 @@ ex_treesitter(exarg_T *eap)
 	return;
     }
 
-    // Handle ":treesitter define {name} {path}" subcommand
-    if (STRNCMP(line, "define", name_end - line) == 0)
-    {
-	char_u *name = NULL;
-
-	// Isolate language name and parser path
-	line = linep;
-	name_end = skiptowhite(line);
-	linep = skipwhite(name_end);
-
-	if (*linep == NUL)
-	{
-	    emsg(_(e_invalid_argument));
-	    return;
-	}
-
-	name = vim_strnsave(line, name_end - line);
-	if (name == NULL)
-	    return;
-
-	treesitter_add_language(name, linep, NULL);
-	vim_free(name);
-	return;
-    }
-
     // Handle ":treesitter start {name}" subcommand
     if (STRNCMP(line, "start", name_end - line) == 0)
     {
@@ -836,17 +1095,6 @@ ex_treesitter(exarg_T *eap)
 	}
 	return;
     }
-
-
-    // Handle ":treesitter injection-query {path}" subcommand
-    if (STRNCMP(line, "injection-query", name_end - line) == 0)
-    {
-	if (curbuf->b_langtree == NULL)
-	    emsg(_(e_treesitter_buffer_not_attached));
-	else
-	    langtree_load_injection_query(curbuf->b_langtree, linep);
-	return;
-    }
 }
 
 /*
@@ -855,6 +1103,63 @@ ex_treesitter(exarg_T *eap)
     void
 set_context_in_treesitter_cmd(expand_T *xp, char_u *arg)
 {
+}
+
+/*
+ * "treesitter_add(name, opts)" function
+ */
+    void
+f_treesitter_add(typval_T *argvars, typval_T *rettv)
+{
+    char_u		*name = NULL;
+    char_u  		*path = NULL;
+    char_u  		*symbol = NULL;
+    char_u		*iquery = NULL;
+    dict_T  		*opts;
+    treesitter_lang_T	*lang;
+
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_dict_arg(argvars, 1) == FAIL))
+	return;
+
+    if (check_for_dict_arg(argvars, 1) == FAIL)
+	return;
+
+    name = vim_strsave(tv_get_string_strict(&argvars[0]));
+    opts = argvars[1].vval.v_dict;
+
+    if (dict_has_key(opts, "path"))
+	path = dict_get_string(opts, "path", true);
+    else
+    {
+	semsg(_(e_missing_argument_str), "path");
+	goto exit;
+    }
+
+    if (dict_has_key(opts, "symbol"))
+	symbol = dict_get_string(opts, "symbol", true);
+
+    lang = treesitter_add_language(name, path, symbol);
+
+    if (lang == NULL)
+	goto exit;
+
+    if (dict_has_key(opts, "injection_query"))
+    {
+	iquery = dict_get_string(opts, "injection_query", false);
+	lang->tl_injection_query = treesitter_get_query(lang, iquery, false);
+    }
+    else if (dict_has_key(opts, "injection_query_path"))
+    {
+	iquery = dict_get_string(opts, "injection_query_path", false);
+	lang->tl_injection_query = treesitter_get_query(lang, iquery, true);
+    }
+
+exit:
+    vim_free(name);
+    vim_free(path);
+    vim_free(symbol);
 }
 
 #endif // FEAT_TREESITTER

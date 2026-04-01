@@ -3825,4 +3825,8 @@ EXTERN char e_treesitter_query_error_str[]
 	INIT(= N_("E1577: Failed loading query file: %s at byte %d"));
 EXTERN char e_treesitter_buffer_not_attached[]
 	INIT(= N_("E1577: Buffer does not have a Treesitter parser attached to it"));
+EXTERN char e_treesitter_invalid_predicate_name[]
+	INIT(= N_("E1577: Treesitter predicate or directive name is invalid"));
+EXTERN char e_treesitter_invalid_predicate_args[]
+	INIT(= N_("E1577: Invalid arguments passed to Treesitter predicate or directive"));
 #endif

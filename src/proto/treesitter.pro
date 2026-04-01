@@ -6,4 +6,5 @@ void langtree_update(langtree_T *lt, linenr_T start, colnr_T col, linenr_T end, 
 void langtree_parse(langtree_T *lt, TSRange *ranges, int ranges_len);
 void ex_treesitter(exarg_T *eap);
 void set_context_in_treesitter_cmd(expand_T *xp, char_u *arg);
+void f_treesitter_add(typval_T *argvars, typval_T *rettv);
 /* vim: set ft=c : */
