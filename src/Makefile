@@ -1582,6 +1582,7 @@ BASIC_SRC = \
 	optionstr.c \
 	os_unix.c \
 	auto/pathdef.c \
+	plane.c \
 	popupmenu.c \
 	popupwin.c \
 	profiler.c \
@@ -1766,6 +1767,7 @@ OBJ_COMMON = \
 	objects/optionstr.o \
 	objects/os_unix.o \
 	objects/pathdef.o \
+	objects/plane.o \
 	objects/popupmenu.o \
 	objects/popupwin.o \
 	objects/profiler.o \
@@ -1973,6 +1975,7 @@ PROTO_FILES = \
 	proto/os_unix.pro \
 	proto/os_vms.pro \
 	proto/os_win32.pro \
+	proot/plane.pro \
 	proto/popupmenu.pro \
 	proto/popupwin.pro \
 	proto/profiler.pro \
@@ -3613,6 +3616,9 @@ objects/winclip.o: winclip.c $(VIM_H_DEPENDENCIES)
 objects/pathdef.o: auto/pathdef.c
 	$(CCC) -o $@ auto/pathdef.c
 
+objects/plane.o: plane.c
+	$(CCC) -o $@ plane.c
+
 objects/popupmenu.o: popupmenu.c
 	$(CCC) -o $@ popupmenu.c
 
@@ -4290,6 +4296,11 @@ objects/pathdef.o: auto/osdef.h auto/pathdef.c vim.h protodef.h auto/config.h fe
  beval.h structs.h regexp.h gui.h \
  libvterm/include/vterm.h libvterm/include/vterm_keycodes.h alloc.h \
  ex_cmds.h spell.h proto.h globals.h errors.h
+objects/plane.o: auto/osdef.h plane.c vim.h protodef.h auto/config.h feature.h \
+ os_unix.h ascii.h keymap.h termdefs.h macros.h option.h \
+ beval.h structs.h regexp.h gui.h \
+ libvterm/include/vterm.h libvterm/include/vterm_keycodes.h alloc.h \
+ ex_cmds.h spell.h proto.h globals.h errors.h
 objects/popupmenu.o: auto/osdef.h popupmenu.c vim.h protodef.h auto/config.h feature.h \
  os_unix.h ascii.h keymap.h termdefs.h macros.h option.h \
  beval.h structs.h regexp.h gui.h \
@@ -4899,6 +4910,7 @@ proto/os_qnx.pro: os_qnx.c
 proto/os_unix.pro: os_unix.c
 proto/os_vms.pro: os_vms.c
 proto/os_win32.pro: os_win32.c
+proto/plane.pro: plane.c
 proto/popupmenu.pro: popupmenu.c
 proto/popupwin.pro: popupwin.c
 proto/profiler.pro: profiler.c

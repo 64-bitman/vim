@@ -3678,6 +3678,12 @@ hl_blend_attr_common(
     return get_attr_entry(&term_attr_table, &new_en);
 }
 
+    int
+hl_blend_cell_attr(int a_attr, int b_attr, int blend)
+{
+    return hl_blend_attr_common(a_attr, b_attr, blend, TRUE);
+}
+
 /*
  * Blend attributes for popup windows with opacity.
  */

@@ -178,6 +178,7 @@ void mbyte_im_set_active(int active_arg);
 # include "ops.pro"
 # include "option.pro"
 # include "optionstr.pro"
+# include "plane.pro"
 # include "popupmenu.pro"
 # if defined(FEAT_PROFILE) || defined(FEAT_RELTIME)
 #  include "profiler.pro"

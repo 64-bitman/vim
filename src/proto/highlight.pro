@@ -20,6 +20,7 @@ int get_tgc_attr_idx(int attr, guicolor_T fg, guicolor_T bg);
 int get_gui_attr_idx(int attr, guicolor_T fg, guicolor_T bg);
 void clear_hl_tables(void);
 int hl_combine_attr(int char_attr, int prim_attr);
+int hl_blend_cell_attr(int a_attr, int b_attr, int blend);
 int hl_blend_attr(int char_attr, int popup_attr, int blend, int blend_fg);
 int hl_pum_blend_attr(int char_attr, int popup_attr, int blend);
 attrentry_T *syn_gui_attr2entry(int attr);

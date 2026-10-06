@@ -5507,3 +5507,38 @@ typedef enum
     TERM_SYNC_OUTPUT_OFF = 1 << 2,
     TERM_SYNC_OUTPUT_FLUSH = 1 << 3,
 } term_sync_output_T;
+
+
+typedef struct
+{
+    uint32_t	codepoint; // UTF-8 codepoint
+    sattr_T	attr; // If -1, then this cell is invalid (e.g. occupied by a
+		      // preceding double width character or not occupied by any
+		      // character at all).
+} sc_cell_T;
+
+/*
+ *
+ */
+typedef struct sc_plane_S sc_plane_T;
+struct sc_plane_S
+{
+    // Relative to top left of parent plane (if any).
+    int row;
+    int col;
+    int rows;
+    int cols;
+    int	zindex; // Relative to parent
+
+    // Children are independent of their parents, other than their positioning
+    // and zindex.
+    sc_plane_T *parent;
+    sc_plane_T *child; // Ordered from lowest zindex to highest zindex.
+    sc_plane_T *prev;
+    sc_plane_T *next;
+
+    uint8_t *transparency; // Between 0 and 100, higher is more transparent.
+			   // Size is cols * rows, may be NULL.
+    sc_cell_T cells[1]; // Actually longer, size is cols * rows, note to update
+			// any references to this plane when it is resized!
+};
